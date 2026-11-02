@@ -37,7 +37,7 @@
     "logo": "./.claude-plugin/icon.png"
   },
   "skills": "./skills/realize-guardrails/",
-  "mcpServers": "./.mcp.codex.json",
+  "mcpServers": "./.mcp.json",
   "extensions": {
     "com.openai": {
       "review": {
