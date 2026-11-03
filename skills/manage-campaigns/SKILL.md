@@ -133,7 +133,7 @@ If the request can reasonably map to multiple targets — multiple campaigns, mu
 
 - *"Create 3 ad variations on account X"* — without a named campaign or item, the plugin must NOT default to "apply across all of the user's campaigns". Ask which campaign(s) — and how many items per campaign — before any write.
 - *"Apply the budget bump to my campaigns"* — confirm whether the user means one specific campaign, a named list, or "all running campaigns"; if all, enumerate them in the preview before each one.
-- *"Pause the worst performers"* — confirm the selection criterion (CPA threshold? click count? campaign vs item?) and the resulting list before any pause.
+- *"Pause the worst performers"* — confirm the selection criterion (CPA threshold? click count? campaign vs item?) and the resulting list before any pause. Drop any campaign whose status cannot be paused or resumed (see *Updating a campaign → Scalars only*, step 2) before you show the list, and name the dropped ones. The `status` that `list_campaigns` returns is enough to build this list; each pause still goes through step 2 on its own.
 
 Scope confirmation uses `AskUserQuestion` with concrete options drawn from the user's account data (e.g., *"Which campaign — A, B, or C?"*, or *"All 4 running campaigns, or pick a subset?"*). Default expansion ("all of them") is forbidden unless the user explicitly confirms it.
 
@@ -274,7 +274,7 @@ If the user did not explicitly say to launch, set `is_active=false` (or omit, si
 ### Scalars only (e.g., budget bump, bid change, name change)
 
 1. Resolve `account_id`, `campaign_id`.
-2. Call `get_campaign` to capture current state.
+2. Call `get_campaign` to capture current state. **Pause or resume:** if `is_active` already matches what the user wants, say so and send nothing. Otherwise read `status` before any preview. `update_campaign`'s `is_active` description says which statuses can't be paused or resumed; go by it, not a list here. If the status is one of them, skip the change and tell the user why in one plain line (in plain words, not the raw status value); for a rejection, offer the reason from `policy_review`. A campaign whose *group* was terminated is not skipped. The status shown can hide the real reason (a rejected campaign in a terminated group shows the group's status), so if the write still fails as "cannot be paused or resumed", don't retry: tell the user and move to the next campaign.
 3. Render diff preview:
    ```
    ▶ WRITE TARGET: <account_name> (<account_id>)
@@ -447,7 +447,7 @@ Every write changes a resource that needs Realize approval (24–48 hours) befor
 
 - Pull `get_campaign(account_id, campaign_id)` to confirm the API-of-record matches the preview the user approved. Both params required — never call `get_campaign` with only `campaign_id`.
 - Pull `list_items(account_id, campaign_id)` to confirm new/updated items are attached.
-- For pauses/resumes, confirm the `status` field on the campaign or `is_active` on the item.
+- For pauses/resumes, confirm `is_active` on the campaign or item. A campaign's `status` may not change (for example, a campaign in a terminated group keeps the group's status, and one resumed inside a paused group still shows the group as paused).
 
 If `get_campaign` returns the prior state immediately after a save, wait a minute and retry once — there can be brief lag between the write and read paths.
 
@@ -459,7 +459,7 @@ These remain Realize-UI-only. Do not fabricate tools for them. **Do not fabricat
 
 Realize UI → Campaigns → row's overflow menu (⋯) → **Delete**.
 
-For most "remove this" intents, the MCP-supported alternative is `update_campaign({is_active: false})` — the campaign stops running but is preserved. Offer that path first; only direct the user to the UI for true deletion.
+For most "remove this" intents, the MCP-supported alternative is `update_campaign({is_active: false})` — the campaign stops running but is preserved. Offer that path first, unless the campaign's status blocks pausing (see *Updating a campaign → Scalars only*, step 2); only direct the user to the UI for true deletion.
 
 ### Duplicate a campaign
 
