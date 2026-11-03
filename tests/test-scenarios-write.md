@@ -165,17 +165,17 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 **Expected side effects:** Depends on item status:
 - PENDING_APPROVAL → `title` updated; re-enters review.
 - RUNNING / PAUSED → write refused, alternative offered (pause + recreate).
-- REJECTED → write refused entirely.
+- `approval_state` REJECTED → reason given, then the edit offered and performed; the item re-enters review.
 
 **Expected flow:**
 1. `manage-campaigns` skill activates.
 2. Calls `get_item` to check status.
-3. Branches per status (per the status-gating workflow in the skill).
+3. Branches on `approval_state` first, then `status` (per the status-gating workflow in the skill).
 4. If PENDING_APPROVAL: renders diff preview (`title: '<old>' → 'New headline test'`) with header; confirms; calls `update_native_item`.
 5. If RUNNING/PAUSED: refuses, offers the pause-and-recreate alternative.
-6. If REJECTED: refuses, offers `create_native_item` for a replacement.
+6. If `approval_state` is REJECTED: reads `policy_review` from the payload already in hand, gives `reject_reason_description` and any `reviewer_notes` verbatim, then **offers the edit** — previewing it as a resubmission, not refusing it.
 
-**Pass criteria:** `get_item` runs first; the skill never attempts a substantive edit on a RUNNING/PAUSED/REJECTED item. Header present on whichever preview/refusal renders.
+**Pass criteria:** `get_item` runs first. Header present on whichever preview or refusal renders. **On the rejected branch: refusing the edit is a fail** — editing a rejected ad is how it is resubmitted — and so is giving no reason, since it is in the payload already read. The preview must say the ad re-enters review and will not go live on this write. Naming the raw `reject_reason` code at the user is a fail. Branching on `status` alone is a fail: `approval_state` decides.
 
 **Cleanup:** If the edit went through, `update_native_item(title='<original>')` to restore (re-enters review).
 
@@ -214,8 +214,8 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 
 **Expected flow:**
 1. `manage-campaigns` skill activates.
-2. Identifies the action is not exposed by MCP.
-3. Surfaces the UI fallback: "There's no MCP tool for deletion. The supported alternative is to pause the campaign via `update_campaign(is_active=false)`, which stops serving but preserves the record. If you need true deletion, use Realize UI → Campaigns → row's ⋯ menu → Delete."
+2. Identifies the action as one the plugin does not perform — without telling the user the MCP or Realize cannot do it.
+3. Surfaces the UI fallback: "I don't delete campaigns here. The supported alternative is to pause the campaign via `update_campaign(is_active=false)`, which stops serving but preserves the record. If you need true deletion, use Realize UI → Campaigns → row's ⋯ menu → Delete."
 4. Offers the pause-via-`update_campaign` alternative as a callable step (with full preview-and-confirm if the user picks it).
 
 **Pass criteria:** No fabricated tool call. The pause alternative is offered before the UI fallback is directed.
@@ -348,7 +348,7 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 **Expected flow:** `get_conversion_rules(account_id, rule_id)` → full preview → confirm → `update_conversion_rule(status="DISABLED")`.
 
 **Pass criteria:**
-- The plugin does **not** redirect this to the Realize UI. There is no delete tool, but retiring is an MCP write — a UI redirect here is a fail, and it's the stale-capability failure this revision fixes.
+- The plugin does **not** redirect this to the Realize UI. There is no delete tool, but retiring is an MCP write — a UI redirect here is a fail, and it's the stale-capability failure this release fixes.
 - Full preview tier, not a diff or one-line confirm. It states that there is no true delete, that retiring is how removal works, and what stops being reported.
 - The plugin does not claim the rule was "deleted" — it says retired/disabled.
 
@@ -518,7 +518,7 @@ The write this PR's goal chain exists for, and the one where the ordinary target
 - Sends `spending_limit_model` — it is required on create even when the budget split is `CUSTOM`. Omitting it is a fail.
 - Resolves **"€20k for the quarter"** rather than assuming it: `ENTIRE` + `spending_limit: 20000` if the €20k covers the whole flight, `MONTHLY` if the user means per month. Picking one silently is the failure this prompt is built to catch — the phrase is genuinely ambiguous and the two readings differ threefold.
 - Settles the conversions question too — the account default, or rules picked manually — rather than leaving it off the preview. It decides what every campaign in the group optimizes toward.
-- Asks for a `kpi` rather than sending `marketing_objective` alone: on create the two travel together, and upstream does not say what a lone objective produces. Offers only `CTR`, `CPC`, `CPM`.
+- Asks for a `kpi` rather than sending `marketing_objective` alone: on create the two travel together, and the tool rejects an objective sent without one. Naming the valid KPIs from memory is a fail — they belong to the tool's own description, and a copy here would drift.
 - Does **not** set `status`, `bid_strategy`, `cpa_goal` or `language` — the API manages those.
 - If the user gives CPA numbers, does not treat `kpi_data` as a Target CPA, and maps the two fields by their UI wording rather than their names.
 - A misspelled field is a rejected call here, not a silent drop — these two tools are closed schemas, unlike the campaign writes.
@@ -539,10 +539,10 @@ The write this PR's goal chain exists for, and the one where the ordinary target
 **Pass criteria:**
 - Reads the group **by id** first, and counts the member campaigns by paging `list_campaigns` and matching `campaign_group_id` — or says "every campaign in this group — I could not count them" if the account cannot be paged. Inventing a number is a fail.
 - The preview states, in plain language, that **every campaign in the group loses control of its own budget** and that Taboola will allocate the group's budget across them. Naming the field or the enum value instead is a fail.
-- Does **not** present the switch as a reversible toggle. Upstream does not document what happens to the campaigns' own budgets if the group returns to `CUSTOM`, so asserting either way is a fail; treating it as one-way is the pass.
-- Checks the group has a limited budget before sending — `AUTOMATIC` rejects `spending_limit_model: NONE`, so a group on `NONE` needs the budget settled in the same conversation rather than a rejected call and a relayed API error.
-- **Names the bid-strategy consequence before the confirmation.** Moving a group to `AUTOMATIC` means Realize requires every campaign in it to be on `MAX_CONVERSIONS`; any member on another strategy will be rejected from then on. Presenting the switch as budget-only is the fail. Silently rewriting a campaign's `bid_strategy` is also a fail — surface it and let the user decide.
+- Does **not** present the switch as a reversible toggle. Going back to `CUSTOM` splits the group's budget **equally** across its campaigns rather than restoring what each had, and does not restore bid strategies — saying it can simply be undone is the fail.
+- Checks the group has a limited budget before sending — a managed group rejects an **unlimited** budget, meaning `NONE` with no limit, no cap and no pacing. Blocking a group that is on `NONE` **with** a `daily_cap` is a fail: that budget is limited and the switch is allowed.
+- **Names the bid-strategy consequence before the confirmation.** Realize rewrites **every** member campaign's bid strategy to Maximize Conversions as part of the switch — the platform does it, not the agent. Presenting the switch as budget-only is the fail. Saying members "will be rejected" is also a fail: they are rewritten, not refused.
 - Checks the account can use `AUTOMATIC` at all: Realize gates the switch behind a per-account allowance, so a rejected call is a possible outcome worth naming rather than promising success.
 - Carries the `▶ WRITE TARGET` header and waits for an explicit Yes. A one-line confirm is a fail — group writes have no cheap tier.
 
-**Cleanup:** switch the group back to `CUSTOM`, then **check each campaign's own budget and re-set it by hand if it did not come back** — upstream does not document which happens. Note what they were before running this.
+**Cleanup:** switch the group back to `CUSTOM`, then **re-set each campaign's budget and bid strategy by hand** — the budget comes back split equally rather than as it was, and bid strategies are not restored at all. Note both before running this.

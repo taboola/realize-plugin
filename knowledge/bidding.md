@@ -21,7 +21,7 @@ The campaign's primary KPI drives BOTH the `marketing_objective` AND the `bid_st
 | Site traffic / engagement | `DRIVE_WEBSITE_TRAFFIC` | `SMART` (default) or `FIXED` (legacy) | None required |
 | Pure awareness / impressions / reach | `BRAND_AWARENESS` | `SMART` or `FIXED` | None required |
 
-> **Note on ROAS target (`roasGoal`):** Update-only, DCO accounts only, and **not currently exposed via the Realize MCP** — set in the Realize UI after creation. The plugin cannot adjust ROAS targets through `create_campaign` or `update_campaign`.
+> **Note on ROAS target (`roasGoal`):** Update-only, DCO accounts only, and **not something this plugin sets** — set in the Realize UI after creation. The plugin cannot adjust ROAS targets through `create_campaign` or `update_campaign`.
 
 ### Default bid strategy is MAX_CONVERSIONS, NOT FIXED
 
@@ -78,7 +78,7 @@ Before recommending any bid action, verify it is a valid lever for the campaign'
 
 **Legend:** ✅ valid lever · ❌ not available — algo / platform decides · n/a not applicable to this strategy
 
-> **Note on Target ROAS (`roasGoal`):** Target ROAS is **not exposed via the Realize MCP today** — it is update-only and DCO accounts only, settable in the Realize UI after creation. There is intentionally no Target ROAS row in this matrix because the plugin cannot adjust it. If a user asks the plugin to set ROAS, refuse the write and route them to the Realize UI.
+> **Note on Target ROAS (`roasGoal`):** Target ROAS is **not something this plugin sets** — it is update-only and DCO accounts only, settable in the Realize UI after creation. There is intentionally no Target ROAS row in this matrix because the plugin cannot adjust it. If a user asks the plugin to set ROAS, refuse the write and route them to the Realize UI.
 
 ### Per-item bidding does NOT exist in Realize
 
@@ -244,7 +244,7 @@ If the campaign is pacing ahead of expectation:
 | Audience targeting | Check whether targeting is too restrictive. |
 | Bidding (Enhanced CPC / Fixed) | Consider slightly increasing bids to stay competitive in auctions. |
 | Bidding (Maximize Conversions) | Consider increasing daily spend by up to 20% of existing spend. |
-| Pace Ahead feature (UI-only — not exposed via the Realize MCP) | Use to accelerate spend for a specific campaign if needed; set in the Realize UI. |
+| Pace Ahead feature (Realize UI only) | Use to accelerate spend for a specific campaign if needed; set in the Realize UI. |
 
 For display campaigns specifically, also check:
 
@@ -383,4 +383,4 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 - Enhanced CPC base-bid formula when CVR is known: `CPC = CPA goal × CVR`. When CVR is unknown, use similar-segment average CPC.
 - For Enhanced CPC: daily budget should be 5× CPA goal, monthly budget should be 150× CPA goal.
 - When CPA spikes persist after learning, check average CPA from past weeks looking at **post-click performance only** before setting a Target CPA.
-- The Pace Ahead feature can accelerate spend for a specific campaign when delivery is slow. **Note:** Pace Ahead is not exposed via the Realize MCP — it is set in the Realize UI; the plugin cannot enable or adjust it through `create_campaign` / `update_campaign`.
+- The Pace Ahead feature can accelerate spend for a specific campaign when delivery is slow. **Note:** Pace Ahead is not something this plugin does — it is set in the Realize UI, and `create_campaign` / `update_campaign` cannot touch it.

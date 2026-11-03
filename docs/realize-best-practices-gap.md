@@ -47,7 +47,7 @@ This plugin wires **20 read tools + 10 write tools** from the upstream MCP. All 
 | Reach estimation | `get_campaign_reach_estimate` |
 | Writes — via `manage-campaigns` only | `create_campaign`, `update_campaign`, `create_native_item`, `update_native_item`, `create_display_item`, `update_display_item`, `create_conversion_rule`, `update_conversion_rule`, `create_campaign_group`, `update_campaign_group` |
 
-Write tools are routed exclusively through the `manage-campaigns` skill (preview-then-confirm gate, mandatory `▶ WRITE TARGET` account header). The skill also retains a UI-fallback section — *actions this plugin does not perform* — for capabilities still not exposed by MCP (delete, duplicate, bulk ops, Custom Rules, lookalike seed creation, pixel installation, codeless-conversion setup, pixel test-fire), plus the CRM customer-list upload, which **is** exposed upstream (`create_audience`) and is deliberately not wired in this revision — see Part 3 for that catalog. **Campaign-group writes are wired** — `create_campaign_group` / `update_campaign_group` go through the same gate, with the widest blast radius on the surface, since some group edits reach every campaign in the group. Attaching a still-ungrouped campaign to a group is a normal wired write too (`campaign_group_id` on `create_campaign` / `update_campaign`); only **moving or detaching** one has no tool at any level, which is why that one alone belongs in Part 3.
+Write tools are routed exclusively through the `manage-campaigns` skill (preview-then-confirm gate, mandatory `▶ WRITE TARGET` account header). The skill also retains a UI-fallback section — *actions this plugin does not perform* — which names what the plugin itself does not do and points at the Realize UI. That section is the live list; Part 3 below is this document's catalog of what the MCP could add. Neither is duplicated here, because a list of upstream's gaps goes stale on upstream's release schedule, not ours. One entry is worth naming because it is not a gap at all: the CRM customer-list upload, where `create_audience` **is** exposed upstream and this plugin does not use it yet. Wiring the audience surface is tracked separately (open as of 2026-11-03); when it lands, this sentence goes with it. **Campaign-group writes are wired** — `create_campaign_group` / `update_campaign_group` go through the same gate, with the widest blast radius on the surface, since some group edits reach every campaign in the group. Attaching a still-ungrouped campaign to a group is a normal wired write too (`campaign_group_id` on `create_campaign` / `update_campaign`); only **moving or detaching** one has no MCP tool — Realize itself can do it, which is how the UI does, so it is a tool gap rather than a platform one.
 
 ---
 
@@ -89,14 +89,14 @@ Items where existing skill content is **factually inaccurate** against the sourc
 | File | Current wording | Correction | Source |
 |---|---|---|---|
 | `manage-campaigns/SKILL.md` — review cycle | "24–48 hours" | Target: **"one business day"**; some reviews take longer; no expedited option; contact is `support@taboola.com` or the user's Account Manager | [Campaign Review Process](https://www.taboola.com/help/en/articles/3878200-campaign-review-process) |
-| `manage-campaigns/SKILL.md` — review outcomes | Implies binary approved/rejected | Three outcomes: **Fully launched** (all items ready), **Partially launched** (≥1 item running), **Rejected** (none running) | Campaign Review Process |
+| `manage-campaigns/SKILL.md` — review outcomes | Implies binary approved/rejected | Three outcomes: **Fully launched** (all items ready), **Partially launched** (≥1 item running), **Rejected** (none running). Telling them apart needs item `status` from `list_items` — `inventory_summary` counts approvals, and an approved ad is not necessarily a running one. | Campaign Review Process |
 These two corrections are the only suggested edits to existing skill files. (A third correction — creative variations count — has been applied: skills now align with the toolkit's `3 distinct titles + 3 unique images per campaign` rather than the official A/B testing article's `4–6 titles + similar images per URL`. Toolkit treated as authoritative on this point.) Everything else discovered during this review is cataloged under **Part 3** as a future ability of the MCP, not as skill content.
 
 ---
 
 ## Part 3 — Potential Future MCP Abilities
 
-Each entry here is a capability called out by the best-practice articles that the plugin **cannot touch today** because the MCP does not expose a relevant tool. These are listed as candidates for upstream ([taboola/realize-mcp](https://github.com/taboola/realize-mcp)) to consider adding. Until they are added, Claude's only path to any of these is to tell the user to do it themselves in the Realize UI — and the plugin's skills should remain silent on the detailed how-to so they don't drift into being a UI manual.
+**This part is the one place in the repo allowed to catalogue what upstream does not expose yet** — it is a planning artifact, read by us, loaded by no skill at runtime, and parts of this catalogue predate tools that have since shipped — §3.A, §3.B, §3.C and §3.D still list campaign, item, targeting and budget writes that Part 1 records as wired. Re-check a row against Part 1 before treating it as a gap. The standing rule everywhere the agent reads is the opposite: say what *this plugin* does not do, never what the MCP or Realize cannot — see `.claude/CLAUDE.md` → *Three sources of truth*. Each entry below is a capability called out by the best-practice articles that the plugin **cannot serve today** because no tool exists for it. These are listed as candidates for upstream ([taboola/realize-mcp](https://github.com/taboola/realize-mcp)) to consider adding. Until they are added, Claude's only path to any of these is to tell the user to do it themselves in the Realize UI — and the plugin's skills should remain silent on the detailed how-to so they don't drift into being a UI manual.
 
 Listed with the source article, a one-line description of what the ability would do, and the UI surface that exists for it today.
 
@@ -109,7 +109,6 @@ Listed with the source article, a one-line description of what the ability would
 | `pause_campaign` / `resume_campaign` | Toggle campaign status | Campaign list status toggle, or Pause/Resume button | Optimization |
 | `duplicate_campaign` | Clone a campaign with optional field overrides | Row overflow → Duplicate | Editing flow |
 | `submit_campaign_for_review` | Programmatic submission | `Continue` button at end of setup | Setup |
-| `get_campaign_review_status` | Read the three review outcomes (Fully / Partially / Rejected) and the rejection reason | Campaign list status column | Campaign Review Process |
 
 ### 3.B — Campaign item writes (creatives / inventory)
 
@@ -130,7 +129,7 @@ Listed with the source article, a one-line description of what the ability would
 | Future ability | Does what | Today's UI path | Source |
 |---|---|---|---|
 | `update_targeting` | Adjust Location / Platform / Device / Connection / OS / Browser on a campaign | Campaign → Targeting | Setup + Optimization |
-| `create_audience` *(exists upstream; not wired in this revision — not a platform gap)* | List account audiences or create from pixel/events | `Audiences → New Audience` | Retargeting |
+| `create_audience` *(exists upstream; this plugin does not use it yet as of 2026-11-03 — not a platform gap)* | List account audiences or create from pixel/events | `Audiences → New Audience` | Retargeting |
 | `toggle_brand_safety_pre_bid` | Enable/disable the brand-safety filter | Advanced Options | Setup Step 6 |
 | `setup_campaign_clicker_retargeting` | The IMG-tag-in-3rd-party-pixels flow that builds an audience from campaign clickers (~2 week build) | `Audiences → New Audience → From Pixel → Campaign Clickers`, then paste IMG tag into the originating campaign | Retargeting article |
 
@@ -154,10 +153,12 @@ Listed with the source article, a one-line description of what the ability would
 
 ### 3.F — Review-process visibility
 
-| Future ability | Does what | Today's UI path | Source |
-|---|---|---|---|
-| `get_review_state` | Pending / Fully launched / Partially launched / Rejected plus per-item breakdown | Campaign list status column | Campaign Review Process |
-| `get_rejection_reasons` | Read policy-violation codes on rejected campaigns or items | Rejection notice | Campaign Review Process + linked Rejection Reasons doc |
+Nothing. This section listed two future abilities until 2026-11-03; both already exist on the read
+tools. `get_campaign` carries `policy_review` and `inventory_summary` (items total / approved / rejected —
+aggregate counts, not a per-item breakdown, and approved is not the same as running); the per-item
+breakdown is `list_items`, where each item carries its own `approval_state`, `status` and
+`policy_review`. Pending is readable too: `approval_state: PENDING` on the campaign, and by
+arithmetic on the counts. See `knowledge/creative.md` → *Reading why something was rejected*.
 
 ### 3.G — Cross-window and cohort analytics (read-tool gaps)
 

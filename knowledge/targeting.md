@@ -26,12 +26,12 @@ A given Realize account does NOT need to "contain" demographic, interest, intent
 Female / Male / age-bucketed (18+, 25+, 35+, etc.) audiences EXIST in the broader Realize marketplace via 1P data partners (Yahoo, Bombora, Connexity, Eyeota, Audience One). They are NOT always returned by `search_contextual_segments` (which trends content-category-flavoured) and they may not surface in `search_audiences` until they have been surfaced or saved at the account level. **Do not assert "Women / Female / Men / age-X-Y demographic does not exist on Realize"** based on an empty MCP query result.
 
 When demographic targeting is required and MCP search results don't surface a match:
-- Note the gap explicitly: "declared demographic (Female / age-N-M) not surfaced by current MCP discovery tools — layer it in via the Realize UI marketplace browser at activation time."
-- Don't substitute "no demographic exists." The demographic layer can be applied in the Realize UI marketplace browser even when MCP discovery doesn't surface it.
+- Say what is missing without blaming a layer: "I can't resolve the declared demographic (Female / age-N-M) from here — add it in the Realize UI marketplace browser at activation time."
+- Don't substitute "no demographic exists." The demographic layer can be applied in the Realize UI marketplace browser whether or not the search surfaced it here.
 
 Gender-specific exact age ranges (e.g., F35-64) may need to be composed from broader buckets (e.g., F25+ + F65- excluding) in the UI.
 
-**Conversion-rule writes are wired here** — create, update and retire all go through the `manage-campaigns` preview-then-confirm gate, so do not send a user to the Realize UI for them. Building a **lookalike or predictive audience from a seed** has no tool at any level — that one is a Realize UI action. Uploading a **CRM segment** is different: `create_audience` exists upstream and is simply not enabled in this revision, so say it is not something this plugin does rather than that Realize cannot do it.
+**Conversion-rule writes are wired here** — create, update and retire all go through the `manage-campaigns` preview-then-confirm gate, so do not send a user to the Realize UI for them. Building a **lookalike or predictive audience from a seed** has no MCP tool — that one is a Realize UI action. Uploading a **CRM segment** is different: `create_audience` exists upstream and this plugin does not use it yet, so say it is not something this plugin does rather than that Realize cannot do it.
 
 ---
 

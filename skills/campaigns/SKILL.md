@@ -57,7 +57,7 @@ Inspection of campaigns and their items (creatives) for a given account using th
 **"What's the deal with campaign 98765?"**
 1. `get_campaign(account_id=..., campaign_id=98765)` for configuration and status.
 2. `list_items(account_id=..., campaign_id=98765)` for the creative list.
-3. Summarize: objective, budget, targeting, creative count, any items flagged paused/rejected.
+3. Summarize: objective, budget, targeting, creative count, any items flagged paused/rejected — with the reason for each rejection, per the gotcha below.
 
 **"Show me the creatives for my top-spending campaign."**
 1. Combine with the `reports` skill: run a campaign-grain dynamic report sorted by spend DESC (`get_dynamic_report_settings` → `get_dynamic_report_data`), pick the top campaign. On a **GROUP or admin-network** account the dynamic tools 403 — use `get_campaign_breakdown_report` (`sort_field="spent"`, `sort_direction="DESC"`) instead; the `reports` skill owns that routing rule.
@@ -73,3 +73,5 @@ Inspection of campaigns and their items (creatives) for a given account using th
 
 - Treat `campaign_id` and `item_id` as **opaque identifiers** returned by the API. Pass them through to follow-up tool calls exactly as received — do not coerce to numbers or strip/format them.
 - An item's status is distinct from its campaign's status — a running campaign can have rejected items. Flag this when relevant.
+- **`approval_state` decides whether an ad is serving, not `is_active`.** A rejected item can still read `is_active: true`. Never describe such an ad as running — say it was rejected, and give the reason.
+- **A rejection is never reported without its reason.** `approval_state: REJECTED` on a campaign or an item normally comes with a `policy_review` object in the same payload — and when it does not, say the reason was not returned rather than supplying one. A campaign also carries `inventory_summary` (items total / approved / rejected). Those are **approval** counts, not serving counts, and **`0 / 0 / 0` does not mean the campaign has no ads** — feed-fed campaigns read zero there, so confirm with `list_items` before calling one empty. Read both before describing why something is not running — `knowledge/creative.md` → *Reading why something was rejected*. "It was rejected" on its own is the failure this rule exists to stop: the answer is already in the response you have.

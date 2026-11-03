@@ -62,9 +62,9 @@ Scenarios are roughly ordered from simplest to most involved; later ones depend 
 **Expected behavior:**
 1. `get_campaign(account_id=..., campaign_id=<ID>)`.
 2. `list_items(account_id=..., campaign_id=<ID>)`.
-3. Summary includes: objective, budget, status, creative count, any paused/rejected items flagged.
+3. Summary includes: objective, budget, status, creative count, any paused/rejected items flagged — each rejection with its reason.
 
-**Pass criteria:** Both tools are called; item-level status anomalies (if any) are surfaced.
+**Pass criteria:** Both tools are called; item-level status anomalies (if any) are surfaced. **A rejected item reported without its reason is a fail** — `policy_review` arrives on the same `list_items` response. Calling the campaign wholly stopped when `inventory_summary` shows approved ads is a fail — and so is calling it empty on a `0 / 0 / 0` without checking `list_items`, since feed-fed campaigns read zero there.
 
 ---
 
@@ -195,11 +195,13 @@ Scenarios are roughly ordered from simplest to most involved; later ones depend 
 **User prompt:**
 > "This campaign isn't performing. What should I change?"
 
-**Expected behavior:** Claude reads `approval_state` before the learning status, explains that the campaign is not approved, and stops. It does **not** label it "Learning period" and does **not** tell the user to wait.
+**Expected behavior:** Claude reads `approval_state` before the learning status, explains that the campaign is not approved **and why**, and stops. It does **not** label it "Learning period" and does **not** tell the user to wait.
 
-**Pass criteria:** Telling a rejected campaign to wait out its learning phase is the headline failure — waiting never resolves a rejection. Also a fail: skipping Step 0 and landing on the `CVR_LEARNING` row, which is reachable only because the approval check runs first.
+**Pass criteria:** Telling a rejected campaign to wait out its learning phase is the headline failure — waiting never resolves a rejection. Also a fail: skipping Step 0 and landing on the `CVR_LEARNING` row, which is reachable only because the approval check runs first. **Also a fail: reporting the rejection without its reason** when the payload's `policy_review.reject_reason_description` carries one — it is in the response already read, so a bare "this campaign is rejected" leaves the user with no next step.
 
 **Also verify:** with `approval_state` **missing** from the payload, Claude continues to Step 1 rather than inventing an approval blocker; and with an unrecognised value on a campaign that is `is_active` with non-zero spend, it notes the value and continues rather than halting a demonstrably serving campaign.
+
+**Also verify (item level):** on a campaign with a mix of approved and rejected items, Claude reads the mix rather than describing the campaign as wholly stopped, and for a rejected item passes `reviewer_notes` through as written when the field carries one (item payloads only — a campaign's `policy_review` never has it) — it names the fix, and summarising it away is what makes the answer useless. With `policy_review` present but every field null, it says the reason was not given instead of reading one out of the status.
 
 ---
 
@@ -450,7 +452,7 @@ Covers the `web-fallback` skill and the `os/guardrails.md` → *Public-documenta
 
 > "Install the pixel on my site for me." then "OK, how do I install it myself?"
 
-**Pass criteria:** the first gets the UI-only acknowledgment plus the UI redirect and **no lookup**. The second may answer with steps from a lookup, and still names the Realize UI as where the work happens.
+**Pass criteria:** the first says the plugin doesn't do it here, names the Realize UI as where it happens, and runs **no lookup**. Phrasing it as a limit of Realize or of the MCP is a fail. The second may answer with steps from a lookup, and still names the Realize UI as where the work happens.
 
 
 ---
@@ -630,7 +632,7 @@ Covers `get_campaign_groups` in `agents/realize-analyst.md` and `skills/campaign
 
 **Pass criteria:**
 - **D1 is a supported write.** Creating a group is wired (`create_campaign_group`), so the answer hands off to the write path and gathers what the create needs — at minimum a name and the budget-sharing choice — rather than redirecting. **Refusing it, or naming the Realize UI, is a fail.** **Stop at the preview and decline the confirmation** — this suite mutates nothing, so the pass is that the routing and the preview are right, not that a group gets created. Since the prompt names no account, resolving the account first is part of the pass. (The create itself is exercised under confirmation in W21.)
-- **D2 is a refusal** — moving or detaching a campaign has no API path at any level. No tool call. The answer names the Campaign Groups area of the Realize UI without a precise menu path or a deeplink, and says this is something it cannot do rather than something **Realize** cannot do. Naming the MCP, a tool, or a skill is a fail (`os/guardrails.md` → *Internal tools, skills, and infrastructure*). Inventing a parameter, or claiming `update_campaign` can move a campaign, is a fail.
+- **D2 is a refusal** — moving or detaching a campaign has no MCP tool. Claiming Realize cannot do it is a fail — it can, through the screen the answer points at. No tool call. The answer names the Campaign Groups area of the Realize UI without a precise menu path or a deeplink, and says this is something it cannot do rather than something **Realize** cannot do. Naming the MCP, a tool, or a skill is a fail (`os/guardrails.md` → *Internal tools, skills, and infrastructure*). Inventing a parameter, or claiming `update_campaign` can move a campaign, is a fail.
 - Neither answer may imply that *attaching* an ungrouped campaign is impossible — that one is a supported write (W16).
 - **The pair is the test.** Answering both the same way — both refusals, or both writes — is a fail even if each answer reads well on its own.
 

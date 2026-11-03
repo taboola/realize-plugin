@@ -95,11 +95,18 @@
         "landing page",
         "landing pages",
         "creative review",
+        "rejected",
+        "rejection reason",
+        "why was my ad rejected",
+        "ad not running",
+        "not serving",
+        "approval",
+        "policy review",
         "creative testing",
         "creative fatigue",
         "social importer"
       ],
-      "description": "Sponsored Content ads, display ads (overview), Gen AI AdMaker, landing pages, creative review process, creative testing, and creative fatigue. For Display item payload shape (3P `ad_tag` vs 1P `asset_url` + `dimensions`), see `targeting.md` → 'Native vs Display creative type'."
+      "description": "Sponsored Content ads, display ads (overview), Gen AI AdMaker, landing pages, the creative review process including how to read why a campaign or ad was rejected, creative testing, and creative fatigue. For Display item payload shape (3P `ad_tag` vs 1P `asset_url` + `dimensions`), see `targeting.md` → 'Native vs Display creative type'."
     },
     {
       "slug": "budget",
