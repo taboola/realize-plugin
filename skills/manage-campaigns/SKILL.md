@@ -290,8 +290,8 @@ If the user did not explicitly say to launch, set `is_active=false` (or omit, si
 
 1. Resolve `account_id`, `campaign_id`.
 2. Call `get_campaign` to capture current state.
-3. **If the response carries a `campaign_group_id` that is a positive number** (`0` / `null` / `""` / absent all mean ungrouped — do not search for them), and any field you are about to change is `spending_limit_model` / `spending_limit` / `daily_cap` / `daily_ad_delivery_model`, read the group before previewing anything. Read it per `knowledge/campaign-structure.md` → *Reading a campaign group*. An unread group is **not** an unshared one — if you cannot confirm the budget setup, say so instead of previewing the write. If the group shares its budget across its campaigns, **stop**: those four fields are locked on the campaign and the API rejects them. Say the budget lives on the Campaign Group, not on the campaign. Changing it there is a write this skill performs — `update_campaign_group`, per *Creating or updating a campaign group* — and it reaches every campaign in the group, so offer it as the next step rather than sending the user to the Realize UI. Non-budget scalars (name, bid, tracking code) are unaffected — carry on to step 4.
-4. **If `campaign_group_id` is one of the fields being changed, it is an attach and nothing else.** `update_campaign` can only put a campaign that is currently in **no** group into a group, and only into a `CUSTOM`-budget one. If the campaign already has a positive `campaign_group_id`, refuse: moving or detaching has no MCP tool and is a Realize UI action — and say that taking a campaign out of a group pauses it, so the user is not surprised after doing it themselves. If it is ungrouped, read the target group per `knowledge/campaign-structure.md` → *Reading a campaign group* and refuse unless it is `CUSTOM`. Realize gates attaching on **two** per-account settings, both defaulting to off, and they behave differently: one rejects the call outright; the other lets the attach land but **skips every group-level check on the way** (verified against the platform source 2026-11-03). On such an account a campaign can end up inside a managed-budget group that would normally be refused — with its own budget fields now dead. So never promise an attach will land, and read the group back afterwards to see what the campaign actually joined. And it allows an attach **only** to a `CUSTOM`-budget group, so **any** managed-budget target is rejected — testing only for `AUTOMATIC` lets the other managed values through to a call that cannot land. **The preview must say the attach cannot be undone from here** — once the campaign is in the group it only comes out in the Realize UI, and in a managed-budget group it hands over budget control for good. A user confirming an ordinary-looking diff must not discover that afterwards.
+3. **If the response carries a `campaign_group_id` that is a positive number** (`0` / `null` / `""` / absent all mean ungrouped), and any budget field is among the changes, read the group first per `knowledge/campaign-structure.md` → *Reading a campaign group*. An unread group is **not** an unshared one: if you cannot confirm the setup, say so rather than previewing. If the group owns the budget, **stop** — those fields are locked on the campaign and the API rejects them. Say the budget lives on the group, and offer `update_campaign_group` as the next step rather than the Realize UI. Non-budget scalars are unaffected; carry on to step 4.
+4. **If `campaign_group_id` is among the changed fields, it is an attach and nothing else.** `update_campaign` can only put a currently ungrouped campaign into a `CUSTOM`-budget group — the full rule, both account gates and what each failure looks like are in `references/mcp-write-surface.md` → *Campaign groups and the budget they own*. If the campaign already has a group, refuse: moving and detaching are Realize UI actions, and taking a campaign out of a group pauses it. If it is ungrouped, read the target group and refuse any managed-budget target — testing only for `AUTOMATIC` lets the other managed values through to a call that cannot land. **The preview must say the attach cannot be undone from here**, and that in a managed-budget group it hands over budget control for good.
 5. Render diff preview:
    ```
    ▶ WRITE TARGET: <account_name> (<account_id>)
@@ -393,40 +393,13 @@ Never call `update_campaign(publisher_targeting=...)` without reading the existi
 
 Status gates which fields can be edited. The skill enforces this before previewing:
 
-```
-1. Resolve account_id, campaign_id, item_id.
-2. Call get_item(account_id, campaign_id, item_id).
-3. Inspect `item.approval_state` first, then `item.status`. **`approval_state` decides**, and it is the one that stays `REJECTED` while `is_active` can still read true:
-   - `approval_state` REJECTED → read `policy_review` from the same payload and give the
-                reason back first — `reject_reason_description`, plus `reviewer_notes`
-                verbatim when it carries one, since that is what names the fix.
-                **Then offer the edit — do not refuse it.** Editing a rejected ad is how it
-                gets resubmitted: the change puts it back into review (verified against
-                the platform source 2026-11-03). Three things the preview must say — it
-                re-enters review; it will not go live on this write, because a rejected ad
-                cannot be set active in the same call; and some accounts cap how many
-                times one ad may be resubmitted, so the write can still come back refused,
-                and a replacement ad is the fallback if it does. When the user's own
-                requested change is what clears the rejection, say so and use their
-                wording rather than asking for it again.
-                See `knowledge/creative.md` → *Reading why something was rejected*.
-   - `status` RUNNING or PAUSED → only is_active + minor metadata are editable.
-     If the user's requested change touches title / url / description / thumbnail / cta:
-       refuse the substantive edit. Offer the alternative:
-         a) toggle the existing item to is_active=false via update_native_item,
-         b) create a replacement via create_native_item.
-   - `status` PENDING_APPROVAL → all fields editable; proceed. (`PENDING_APPROVAL` is a `status`
-     value, not an `approval_state` one — `approval_state` carries `APPROVED`, `REJECTED` or
-     `PENDING`.)
-   - `status` CRAWLING → **edits are refused on most accounts** while Realize is still crawling the
-     landing page; a per-account setting allows them. Say it is still being crawled and offer to try
-     again shortly, rather than promising the edit will land.
-4. Render preview tier appropriate to the change:
-   - is_active toggle only → one-line confirm:
-     "▶ WRITE TARGET: <account_name> (<account_id>) — Pause item <id> ('<title>')? [y/N]"
-   - non-is_active edits → full diff preview as in the scalar-update pattern above.
-5. AskUserQuestion → submit on Yes.
-```
+1. Resolve `account_id`, `campaign_id`, `item_id`, then call `get_item`.
+2. **Read `approval_state` first — it decides, and `status` is secondary.** `approval_state` carries `APPROVED`, `REJECTED` or `PENDING`; `PENDING_APPROVAL` and `CRAWLING` are `status` values.
+   - **`approval_state` REJECTED** — give the reason first, from the `policy_review` already in the payload, then **offer the edit; do not refuse it**. Editing a rejected ad is how it is resubmitted. The preview must say three things: it re-enters review; it will not go live on this write, because a rejected ad cannot be set active in the same call; and some accounts cap resubmissions, so the write can still come back refused, with a replacement ad as the fallback. If the change the user asked for is what clears the rejection, say so and use their wording. Phrasing: `knowledge/creative.md` → *Reading why something was rejected*.
+   - **`status` CRAWLING** — edits are refused on most accounts while Realize crawls the landing page. Say it is still being crawled and offer to try again shortly.
+   - **`status` RUNNING or PAUSED** — in practice only `is_active` and minor metadata apply. If the change touches title / url / description / thumbnail / cta, refuse the substantive edit and offer either deactivating the item or creating a replacement.
+   - **`status` PENDING_APPROVAL** — all fields editable; proceed.
+3. Render the preview tier the change deserves — an `is_active` toggle takes the one-line confirm, anything else the full diff — then submit on an explicit Yes.
 
 For `update_native_item` arrays (`verification_pixel`, `viewability_tag`): the array fields are full-replace within their section. To edit one entry, read with `get_item`, modify locally, send the merged result.
 
@@ -478,7 +451,7 @@ For `update_display_item` arrays (`verification_pixel`, `viewability_tag`): same
 
 `create_campaign_group` and `update_campaign_group` are wired here. They are the widest-reaching writes on this surface, so they get their own procedure rather than borrowing the campaign one. Field-by-field reference: `references/mcp-write-surface.md` §3c.
 
-**Why they are not like the other writes.** Every other write in this skill changes one object. A group write can change every campaign in the group — switching how the budget is split takes budget control away from all of them **and rewrites every one of their bid strategies to Maximize Conversions**, changing a shared group's budget reaches all of them, moving the group's `start_date` can drag every earlier-starting campaign with it where that sync is switched on, and `is_active=false` pauses all of them. That is what the preview has to carry.
+**Why they are not like the other writes.** Every other write in this skill changes one object; a group write can change every campaign in the group. The preview must name what it reaches — the full list is in `references/mcp-write-surface.md` §3c under *What the preview must say*, and it is longer than people expect.
 
 ### Workflow
 
@@ -510,7 +483,7 @@ If `get_campaign` returns the prior state immediately after a save, wait a minut
 
 ## UI fallback — actions this plugin does not perform
 
-Nothing in this section is something **this plugin** does, so that is the sentence the user gets — "I don't do that here", plus the screen it lives on when you actually have its path. Do not tell them the platform cannot do it or that no tool exists (`os/guardrails.md` carries why). Whether the cause is our choice or a missing API is a maintenance fact, recorded in `.claude/CLAUDE.md`, not part of the reply. **Four exceptions are flagged inline below** — group create/edit, attaching an ungrouped campaign, retiring a conversion rule, and pixel-health diagnosis. Each is wired, and each sits here because the request that reaches it looks identical to one that cannot be served.
+Almost nothing in this section is something **this plugin** does — the inline exceptions below are flagged where they sit — so that is the sentence the user gets — "I don't do that here", plus the screen it lives on when you actually have its path. Do not tell them the platform cannot do it or that no tool exists (`os/guardrails.md` carries why). Whether the cause is our choice or a missing API is a maintenance fact, recorded in `.claude/CLAUDE.md`, not part of the reply. They sit here because each looks identical to a request that cannot be served.
 
 These remain Realize-UI-only. Do not fabricate tools for them. **Do not fabricate deeplink URLs either** — the Realize UI's URL structure has not been formally captured for the plugin, so a guessed link will 404. Use the menu paths below verbatim and let the user navigate.
 
@@ -534,9 +507,9 @@ Multi-select pause/resume/edit operations on the Campaigns or Items list are UI-
 
 Three shapes, and only one of them is a write this skill performs. Classify before answering.
 
-- **Creating or editing a group is NOT on this list** — `create_campaign_group` / `update_campaign_group` are wired, and this skill performs them behind the usual preview-then-confirm gate. The preview must say what the write reaches, in plain language and with a count where one can be had: switching how the budget is split takes budget control away from **every campaign in the group** and rewrites every one of their bid strategies to Maximize Conversions, a shared group's budget change reaches all of them, and `is_active=false` pauses them all. The procedure is in *Creating or updating a campaign group* above; §3c of `references/mcp-write-surface.md` carries the fields. There is no delete — deleting a group terminates its campaigns, so the supported retirement is `is_active=false`.
-- **Move a campaign to a different group, or take it out of one** — not something this plugin does. **First check it really is a move:** read the campaign and look at `campaign_group_id`. **"Has a group" means `campaign_group_id` is a positive number — `0`, `null`, `""` and an absent key all mean ungrouped, and none of them is a group id to search for.** If it is ungrouped, the user said "move" but means attach — that is the next bullet, and refusing it is a wrong answer. Only when the campaign already sits in a group is this a move: `campaign_group_id` on `update_campaign` attaches only, and there is no detach parameter. Same redirect to the **Campaign Groups** area of the Realize UI, which is where it is done. Say it is a Realize UI action — not that Realize cannot do it. **Tell them taking a campaign out of a group pauses it**, so they are not surprised after doing it themselves.
-- **Putting a still-ungrouped campaign into a group is NOT on this list.** `campaign_group_id` on `create_campaign` / `update_campaign` is a gated write this skill performs — see `references/mcp-write-surface.md` → *Campaign groups and the budget they own*. On `update_campaign` it is **attach only**, and only to a group whose campaigns keep their own budgets. On `create_campaign` the new campaign may go into **any** group — including one that shares its budget, where you then omit the campaign's budget fields entirely. Do not redirect either case here. **The preview must say the attach cannot be undone here** — once the campaign is in the group it only comes out in the Realize UI, **and coming out pauses the campaign**. (Why: there is no detach or move tool. That is background for you, not a line for the preview.) In a shared-budget group it also hands budget control to the group permanently. A user confirming an ordinary-looking diff must not discover that afterwards.
+- **Creating or editing a group is NOT on this list** — `create_campaign_group` / `update_campaign_group` are wired, and this skill performs them behind the usual gate. Procedure: *Creating or updating a campaign group* above; fields and the full blast radius: `references/mcp-write-surface.md` §3c. There is no delete — deleting a group terminates its campaigns, so the supported retirement is `is_active=false`.
+- **Move a campaign to a different group, or take it out of one** — not something this plugin does. **Check it really is a move first:** a campaign with no group means the user said "move" and means attach, which is the next bullet, and refusing it is the wrong answer. For a real move, redirect to the **Campaign Groups** area of the Realize UI and say that coming out of a group pauses the campaign.
+- **Putting a still-ungrouped campaign into a group is NOT on this list.** It is a gated write this skill performs — step 4 of *Updating a campaign* above, rules in `references/mcp-write-surface.md` → *Campaign groups and the budget they own*. Note `create_campaign` may target **any** group, including one that shares its budget; `update_campaign` may not. Do not redirect either case here.
 
 One consequence worth catching early: if a campaign sits in a group that **shares its budget across campaigns**, the campaign's own budget fields are locked and the API rejects them. Check that by reading the group **by id**, per `knowledge/campaign-structure.md` → *Reading a campaign group* — that read returns the full record, budget fields included. If `budget_distribution_method` is still absent after a by-id read, do not infer `CUSTOM`: say the budget setup could not be confirmed. "Raise the daily budget on campaign X" is then a group-level change — `update_campaign_group`, first bullet, not a campaign write.
 
@@ -546,7 +519,7 @@ Conversion **rules** are now MCP-backed (see *Conversion rules — account-level
 
 - **Installing the pixel** — the Shopify app, the WordPress plugin, the WooCommerce integration, a Google Tag Manager template, or a manual base-code install.
 - **Codeless conversion setup** — defining a conversion by clicking elements in the page.
-- **Test-firing a pixel** — there is no tool that fires a test event.
+- **Test-firing a pixel** — not something this plugin does.
 - **Pixel binding on DSP rules** — those rules can be renamed and retired via MCP, but their pixel binding and other DSP-only fields are console-only.
 
 For any of these, name the UI as where the work happens. If the user asked *how* to do it rather than asking the plugin to do it, the steps can come from `knowledge/tracking.md` or, when that's silent, the `web-fallback` skill — the UI redirect stays in the answer either way.

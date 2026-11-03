@@ -185,8 +185,9 @@ All restricted content, products, and services must comply with additional restr
 
 ### Reading why something was rejected
 
-`get_campaign`, `list_campaigns`, `get_item` and
-`list_items` all return a read-only **`policy_review`** object next to `approval_state`:
+`get_campaign`, `list_campaigns`, `get_item` and `list_items` each return a read-only
+**`policy_review`** object next to `approval_state`. It is normally present on a rejected object; when
+it is not, say the reason was not returned rather than supplying one.
 
 **A campaign and an item do not carry the same fields.**
 
@@ -207,7 +208,7 @@ reason is something to act on, not just to report. Offer the fix. The ad will no
 write — it goes back into review — and some accounts limit how many times one ad can be resubmitted,
 so a replacement is the fallback once that limit is reached.
 
-- **`reviewer_notes` is null on most rejected objects.** Report what carries a value; say the reviewer left no note rather than reading one out of the
+- **`reviewer_notes` is null on most rejected objects, and is the user's own text to act on when it is not** — quote it, never compress it. Report what carries a value; say the reviewer left no note rather than reading one out of the
   code name. If `policy_review` is absent on something that reads `REJECTED`, or present with every
   field null, say the reason was not returned — there is no second call that fetches it, and the
   status is not a reason.
@@ -220,8 +221,6 @@ so a replacement is the fallback once that limit is reached.
 - **A code with no description of its own falls back to the platform's default text**, which may be
   a stock sentence or may be nothing at all. Either way it does not describe this rejection, so say
   the reason was not given rather than reading the fallback out as the finding.
-- **`reviewer_notes` is the user's own text to act on**, not a summary to compress — it is where a
-  grammar rejection tells you which token broke, for instance.
 
 A campaign payload usually also carries **`inventory_summary`** (`number_of_items`,
 `number_of_approved_items`, `number_of_reject_items`). Useful, with four limits worth knowing:
@@ -229,9 +228,9 @@ A campaign payload usually also carries **`inventory_summary`** (`number_of_item
 - **Approved is not running.** An approved-but-paused ad counts as approved. To say a campaign is
   partly live rather than merely partly approved, read item `status` from `list_items`.
 - **There is no pending count.** Pending is total minus approved minus rejected.
+- **It can be missing entirely** on credentials without the inventory-summary permission.
 - **`0 / 0 / 0` does not mean "no ads".** Only directly attached items are counted, so a campaign fed
-  from a feed or a library reads zero while running fine. The field is also missing entirely on credentials without the
-  inventory-summary permission. **Never call a campaign empty on this field alone** — confirm with `list_items`.
+  from a feed or a library reads zero while running fine.  **Never call a campaign empty on this field alone** — confirm with `list_items`.
 
 ---
 
