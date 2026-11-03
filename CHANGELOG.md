@@ -4,7 +4,10 @@ All notable changes to this plugin will be documented here. Format loosely follo
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+- **Codex package renamed to `realize-plugin-openai`.** `name` in `.codex-plugin/plugin.json` changed from `realize-plugin` to `realize-plugin-openai`, as OpenAI's marketplace review asked: the new name is uploaded as a new plugin so it doesn't inherit the old draft's configuration issue. The display name stays `Realize Plugin`. The Claude Code plugin keeps the name `realize-plugin`.
+- **Codex subtitle shortened** to "Manage Realize campaigns" to fit OpenAI's 30-character `shortDescription` limit.
+- **OpenAI submission branch.** The OpenAI zip is built from `openai-submission`. That branch differs from `main` only in `.mcp.json`, which drops the `X-Realize-Client` header and the `oauth.callbackPort` entry because OpenAI configures OAuth in its portal. `main` keeps both, since the Claude Code install and the Anthropic directory need them. Traffic from the OpenAI build therefore carries no `X-Realize-Client` attribution.
 
 ## [0.5.5] — Unreleased (pending directory review)
 
