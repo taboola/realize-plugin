@@ -1,5 +1,5 @@
 {
-  "name": "realize-plugin",
+  "name": "realize-plugin-openai",
   "version": "0.5.5",
   "description": "Query and manage Realize campaigns through natural language on Codex — powered by the Realize remote MCP. Ships a focused guardrails skill and the MCP wiring. The Claude Code skill-driven workflows (campaign-creation walkthroughs, optimization diagnostics, report aggregation prose) are not loaded on Codex; writes remain gated by explicit preview and confirmation. See INSTALL.md for Codex-specific install notes.",
   "author": {
@@ -19,7 +19,7 @@
   ],
   "interface": {
     "displayName": "Realize Plugin",
-    "shortDescription": "Query and manage Realize campaigns",
+    "shortDescription": "Manage Realize campaigns",
     "longDescription": "Query Taboola Realize accounts, campaigns, items, targeting, conversion rules, and performance reports through natural language. Writes are gated by an account-targeted preview and explicit confirmation.",
     "developerName": "Taboola",
     "category": "Productivity",

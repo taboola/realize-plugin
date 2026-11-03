@@ -135,8 +135,8 @@ The Codex build wires the Realize remote MCP and loads only the focused [`realiz
 
 Two things differ from the Claude Code install:
 
-1. **Manifest name.** Codex loads `.codex-plugin/plugin.json`, where the plugin is registered as `realize-plugin`. When installing into a Codex marketplace, use `realize-plugin` as the plugin slug.
-2. **MCP URL / port.** The shared `.mcp.json` points at `https://mcp.realize.com/mcp` with OAuth callback port `3000`. The Codex build inherits this endpoint by default. Confirm with the Realize team whether your Codex deployment uses the same endpoint before installing — if Codex routes the realize-mcp differently, do not modify the shared `.mcp.json`; raise it with the Realize team for guidance on the correct override mechanism for your Codex environment.
+1. **Manifest name.** Codex loads `.codex-plugin/plugin.json`, where the plugin is registered as `realize-plugin-openai` (display name still `Realize Plugin`). When installing into a Codex marketplace, use `realize-plugin-openai` as the plugin slug. The Claude Code plugin keeps the name `realize-plugin`.
+2. **MCP URL / port.** The shared `.mcp.json` points at `https://mcp.realize.com/mcp` with OAuth callback port `3000`. The Codex build inherits this endpoint by default. Confirm with the Realize team whether your Codex deployment uses the same endpoint before installing — if Codex routes the realize-mcp differently, do not modify the shared `.mcp.json`; raise it with the Realize team for guidance on the correct override mechanism for your Codex environment. The OpenAI marketplace submission is different: it is built from the `openai-submission` branch, whose `.mcp.json` drops the `X-Realize-Client` header and the `oauth` callback port, because OpenAI configures OAuth in its portal.
 
 After install, run a read prompt the same as on Claude Code:
 
