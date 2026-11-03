@@ -393,3 +393,28 @@ Covers the `diagnose-tracking` → `manage-campaigns` handoff. The diagnosis ski
 - A diagnosis that re-enables the rule without the gate is an automatic fail — the worst outcome this scenario exists to catch.
 
 **Cleanup:** retire the rule again (`status: DISABLED`) if the test account should stay as it was.
+
+---
+
+## W16. Pause a list that includes a campaign that can't be paused
+
+**Prerequisite:** the test account has three campaigns: one running, one whose status is Rejected, and one in a campaign group that was terminated (its own status is not Rejected or Terminated). If one is missing, run the scenario with the campaigns you have and note which case went untested.
+
+**User prompt:**
+> "Pause these three campaigns: <running>, <rejected>, <in terminated group>."
+
+**Expected behavior:**
+1. `manage-campaigns` reads each campaign before any preview.
+2. The rejected campaign is left out before the confirm. The plugin says in one line that it can't be paused because of its status, and offers the rejection reason.
+3. The campaign in the terminated group is **not** left out. It gets a normal preview with the `▶ WRITE TARGET` header.
+4. The running campaign gets a normal preview.
+5. Each remaining pause has its own confirm (same principle as W8).
+
+**Expected side effects:** two campaigns paused, only after explicit confirms. No pause is sent for the rejected campaign.
+
+**Pass criteria:**
+- The user is never asked to confirm a pause on the rejected campaign. A confirm followed by a failed write is the failure this scenario exists to catch.
+- Skipping the campaign in the terminated group is also a fail: its own status allows the pause.
+- If a pause fails anyway with a "cannot be paused or resumed" error (for example, a campaign whose status shows only its group's termination but is itself rejected), the plugin names it, does not retry, and the other pause still stands.
+
+**Cleanup:** resume the two paused campaigns, each through the normal confirm gate.

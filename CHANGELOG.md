@@ -6,6 +6,17 @@ All notable changes to this plugin will be documented here. Format loosely follo
 
 _Nothing yet._
 
+## [0.5.6] — Unreleased
+
+### Campaigns that cannot be paused or resumed are left out before the confirm
+Realize refuses to pause or resume a campaign whose own status is Rejected or Terminated. The MCP says so on `update_campaign`'s `is_active` field, and its error tells the caller not to retry. The plugin still showed those campaigns in a pause preview, so the user confirmed a change that was going to fail.
+- `manage-campaigns` checks `status` from `get_campaign` before previewing a pause or resume. A campaign that can't be changed is left out and named, with the rejection reason offered.
+- The statuses are not listed in the plugin. The skill points at the MCP's `is_active` description, so there is one source to keep current.
+- A campaign whose *group* was terminated is not skipped. A shown status can hide a block, so a pause that still fails this way is not retried; the MCP's error is the backstop (and the only guard on Codex, which doesn't ship `manage-campaigns`).
+- Post-write check for a pause or resume reads `is_active`, not `status`: a campaign in a terminated group keeps the group's status either way, and one resumed inside a paused group still shows the group's paused status.
+- New write scenario W16.
+- Version set in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` and `.mcp.json`'s `X-Realize-Client` header.
+
 ## [0.5.5] — Unreleased (pending directory review)
 
 ### Directory submission fixes (DEV-240750)
