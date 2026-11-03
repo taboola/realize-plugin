@@ -2,13 +2,7 @@
   "mcpServers": {
     "realize-mcp": {
       "type": "http",
-      "url": "https://mcp.realize.com/mcp",
-      "headers": {
-        "X-Realize-Client": "realize-mcp-plugin/0.5.5"
-      },
-      "oauth": {
-        "callbackPort": 3000
-      }
+      "url": "https://mcp.realize.com/mcp"
     }
   }
 }
