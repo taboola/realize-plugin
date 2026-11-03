@@ -51,7 +51,7 @@ A group's `budget_distribution_method` decides who owns the budget, and getting 
 
 So *"raise the daily budget on campaign 12345"* is not always a campaign-level write: if 12345 sits in a managed-budget group, the budget lives on the group, so the write is `update_campaign_group` (§3c), not `update_campaign` — which would be rejected. Say where the budget actually lives, and that changing it there reaches every campaign in the group, before previewing anything.
 
-**Attach is not move.** On `update_campaign`, `campaign_group_id` can only attach a campaign that is currently in **no** group, and only to a `CUSTOM`-budget group. Moving a campaign between groups, or removing it from one, has no MCP tool — that is a UI action. Never present an attach preview for a campaign that already has a `campaign_group_id`.
+**Attach is not move.** On `update_campaign`, `campaign_group_id` can only attach a campaign that is currently in **no** group, and only to a `CUSTOM`-budget group. Moving a campaign between groups, or removing it from one, has no MCP tool — that is a UI action. Never present an attach preview for a campaign that already has a `campaign_group_id`. **Two per-account settings gate it, both off by default, and they fail differently:** one refuses the call; the other lets the attach land **unvalidated** — the group is not checked for existing or for belonging to this account, and the budget-field and bid-strategy checks never run. The `CUSTOM`-only rule still holds either way. So never promise an attach will land, and read the campaign back rather than trusting a clean response (verified against the platform source 2026-11-03).
 
 ## 2. Targeting blocks on `create_campaign`
 
