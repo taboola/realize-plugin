@@ -104,7 +104,14 @@
         "policy review",
         "creative testing",
         "creative fatigue",
-        "social importer"
+        "social importer",
+        "catalog campaign",
+        "product feed campaign",
+        "creative library",
+        "RSS feed ads",
+        "campaign shows no ads",
+        "zero items",
+        "no ads attached"
       ],
       "description": "Sponsored Content ads, display ads (overview), Gen AI AdMaker, landing pages, the creative review process including how to read why a campaign or ad was rejected, creative testing, and creative fatigue. For Display item payload shape (3P `ad_tag` vs 1P `asset_url` + `dimensions`), see `targeting.md` → 'Native vs Display creative type'."
     },
@@ -158,7 +165,21 @@
         "reading a campaign group",
         "shared budget",
         "budget distribution method",
-        "attach campaign to group"
+        "attach campaign to group",
+        "deleted campaign group",
+        "terminated group",
+        "group is missing",
+        "group disappeared",
+        "cant find my campaign group",
+        "was this group deleted",
+        "tracked vs optimized rule",
+        "is_optimization_enabled",
+        "rule is only tracked",
+        "retire a conversion rule",
+        "disable a conversion rule",
+        "what happens if I disable this rule",
+        "rule detached from campaigns",
+        "archived rule"
       ],
       "description": "Campaign Groups, the conversion-goal chain (campaign, then Campaign Group, then account default) and the canonical procedure for reading a group, objectives, campaign types (Sponsored Content / Display) including the Native-vs-Display lock-in and the two MCP paths (CPC + first-item / VCPM), hierarchy, which budget fields a group owns, platform/device splits, and cross-period comparison of structural splits in % share."
     },

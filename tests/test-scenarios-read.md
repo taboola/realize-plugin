@@ -64,7 +64,7 @@ Scenarios are roughly ordered from simplest to most involved; later ones depend 
 2. `list_items(account_id=..., campaign_id=<ID>)`.
 3. Summary includes: objective, budget, status, creative count, any paused/rejected items flagged — each rejection with its reason.
 
-**Pass criteria:** Both tools are called; item-level status anomalies (if any) are surfaced. **A rejected item reported without its reason is a fail** — `policy_review` arrives on the same `list_items` response. Calling the campaign wholly stopped when `inventory_summary` shows approved ads is a fail — and so is calling it empty on a `0 / 0 / 0` without checking `list_items`, since feed-fed campaigns read zero there.
+**Pass criteria:** Both tools are called; item-level status anomalies (if any) are surfaced. **A rejected item reported without its reason is a fail** — `policy_review` arrives on the same `list_items` response. Calling the campaign wholly stopped when `inventory_summary` shows approved ads is a fail — and so is calling it empty on a `0 / 0 / 0`, since a catalog campaign reads zero there while serving normally. Offering `list_items` as the proof is also a fail: it returns nothing for a catalog campaign.
 
 ---
 
@@ -604,8 +604,11 @@ Covers `get_campaign_groups` in `agents/realize-analyst.md` and `skills/campaign
 - Answers with the **campaign's own** goal and says it came from the campaign. Reporting the group's goal is a fail — the campaign's rules replace the group's, they do not merge.
 - Adds one line that the Realize UI may show the group's goal for this campaign instead, because the campaign-level field is not displayed on a grouped campaign. Omitting it is a fail: the user who checks the screen reads a correct answer as a mistake.
 - Does **not** suggest editing the group's goal to "fix" the discrepancy. The campaign's own active goal is the one in effect.
-- Resolves the campaign's rule ids through `get_conversion_rules`, **matching on `id`** and with **no `status` filter** — the campaign's `conversion_rules` carries ids and no status, and a rule that is `DISABLED` or `ARCHIVED` still holds its name. Narrowing the pre-read by `status` and then matching what comes back is the fail to catch; it silently drops the retired rule the next criterion depends on.
-- Run a second variant where the campaign's only attached rule is `DISABLED`. The answer must still name it as what the campaign optimizes toward **and** say it is retired. Reporting the group's goal instead is a fail, and so is answering as though the campaign has no goal.
+- Names the event from the campaign payload itself. Each entry in `conversion_rules.rules` already carries `display_name`, `status` and `is_optimization_enabled`, so answering "rule 4417" is a fail, and so is a `get_conversion_rules` round-trip made only to fetch a name the response already had. If the scenario needs a field those do not cover, the lookup is **by `rule_id`** with **no `status` filter** — narrowing the pre-read by `status` silently drops a retired rule.
+- Reads `is_optimization_enabled` before calling any entry the goal. A `false` entry is tracked only; treating it as the goal is a fail. Where the flag is **absent**, the entry is a goal: the field is stripped wholesale on accounts without tracked-only conversions, so absence is the normal case and not something to report. Only the whole `conversion_rules` block going missing is worth flagging.
+- Run a second variant where the campaign's only attached rule is `DISABLED`. Retiring a rule detaches it from every campaign that optimized toward it, so that entry is a **tracked** one — and since it was the campaign's only one, its goal now comes from its group. Naming the retired rule as what the campaign optimizes toward is the fail. The pass names the group's goal, and says the retired rule is still attached for tracking.
+- Run a third variant where the campaign has two `ACTIVE` rules, one with `is_optimization_enabled: true` and one `false`. The pass names only the first as the goal and, if it mentions the second at all, calls it tracked. Listing both as what the campaign optimizes toward is the fail — it is a wrong-KPI answer the payload already rules out.
+- Run a fourth variant on an account where `is_optimization_enabled` is **absent** from every entry — it is stripped on accounts without tracked-only rules. The pass treats the entries as goals and does not mention a tracked/optimized split; reading absent as `false` and reporting "no goal of its own" is the fail.
 
 **Part B — no group, or an unreadable one.**
 
@@ -614,7 +617,7 @@ Covers `get_campaign_groups` in `agents/realize-analyst.md` and `skills/campaign
 **Pass criteria:**
 - (i) and (ii) answer with the account's ACTIVE include-in-total rules **and say it is the account default**. Variant (i) must not make a pointless group call.
 - (iii) says the group could not be read and presents the account default as the **fallback being reported**, not as the verified goal. Presenting it as verified is a fail.
-- (iv) does **not** report "no group goal". The `null` means unread, not empty, so the answer either resolves it (re-reading the group by id) or says the group could not be read — falling through to the account default as if it were verified is a fail. **Also check the call it made in the first place:** re-reading a group whose id is already known through the list form (`search_text`) instead of `campaign_group_id` is itself a fail — the listing is the read that returns `conversion_rules: null`.
+- (iv) does **not** report "no group goal". The `null` means unread, not empty, so the answer either resolves it (re-reading the group by id) or says the group could not be read — falling through to the account default as if it were verified is a fail. **Also check the call it made in the first place:** re-reading a group whose id is already known through the list form (`search_text`) instead of `campaign_group_id` is itself a fail — the listing leaves `conversion_configuration` unpopulated, and it spells "no rules" as `null` where the by-id read spells it `{"rules": []}`. Asserting that the listing drops rules a group actually has is also a fail: it does not.
 - All four state which level the goal came from. Getting the right answer without saying which level is a partial fail — the user cannot otherwise tell an inherited goal from a deliberate one.
 
 **Part C — P5's not-applicable row needs both levels empty.**
@@ -643,4 +646,4 @@ Covers `get_campaign_groups` in `agents/realize-analyst.md` and `skills/campaign
 **Pass criteria:**
 - If it filters by status, it uses `["RUNNING"]`. **Passing `statuses: ["ACTIVE"]` is a fail** — the call is rejected outright rather than ignored, and `ACTIVE` is the vocabulary every other part of the plugin uses, which is what makes this the likely error.
 - Pages against the response's `total` rather than answering from page 1, and respects the max `page_size` of 50. If the response carries no `total`, falls back to the short-page rule (a page shorter than `page_size` is the last). Presenting the first page as the full list is a fail.
-- `STOPPED` groups are deleted ones — not offered as live options, and not described to the user as "stopped".
+- `TERMINATED` groups are deleted ones — not offered as live options, and not described to the user as "stopped". Treating `STOPPED` as the deleted state is a fail: it is an accepted filter value that no read returns.

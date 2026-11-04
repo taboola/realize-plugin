@@ -13,8 +13,8 @@ All notable changes to this plugin will be documented here. Format loosely follo
 
 ### Added — campaign groups and the conversion-goal chain
 
-- **`get_campaign_groups` is wired**, and with it the real goal-resolution order: **campaign → group → account default**. A campaign's own `conversion_rules` *replace* the group's rather than adding to them, and an empty `rules` array means it inherits — it does not mean "no goal". A grouped campaign can also carry its own goal that the Realize UI does not surface, and that goal wins even when the rule behind it has been retired. `knowledge/campaign-structure.md` is the canonical statement; the skills point at it.
-- **`create_campaign_group` / `update_campaign_group` are wired**, through the same preview-then-confirm gate as every other write, taking the write count to **10**. They have the widest blast radius on the surface: a group write reaches every campaign in the group, and switching the budget split also rewrites all their bid strategies. `skills/manage-campaigns/references/mcp-write-surface.md` §3c carries the fields and the full list of what the preview must say.
+- **`get_campaign_groups` is wired**, and with it the real goal-resolution order: **campaign → group → account default**. A campaign's own `conversion_rules` *replace* the group's rather than adding to them, and an empty `rules` array means it inherits — it does not mean "no goal". A grouped campaign can also carry its own goal that the Realize UI does not surface, and that goal wins while the rule behind it is still attached. `knowledge/campaign-structure.md` is the canonical statement; the skills point at it.
+- **`create_campaign_group` / `update_campaign_group` are wired**, through the same preview-then-confirm gate as every other write, taking the write count to **10**. They have the widest blast radius on the surface: a group write reaches every campaign in the group, and switching the budget split to the automatic one also rewrites all their bid strategies. `skills/manage-campaigns/references/mcp-write-surface.md` §3c carries the fields and the full list of what the preview must say.
 - **Attaching an ungrouped campaign to a group** was already possible via `campaign_group_id` and the docs did not say so. Now documented, with its limits: attach only, `CUSTOM`-budget targets only, two account gates that both default off, and no way back out from here.
 
 ### Added — read the rejection reason
@@ -49,10 +49,24 @@ Checked against the `products` and `realize-mcp-server` sources at `origin/maste
 
 Four of these contradict the MCP's own tool descriptions; they are recorded here with the date checked and reported upstream.
 
+### Fixed — second source-check pass (review feedback on #24)
+
+Re-checked against `products` and `realize-mcp-server` at `origin/master` on 2026-11-04. Nine corrections, all of which changed what the agent is told to do.
+
+- **A deleted campaign group reads back `TERMINATED`, not `STOPPED`.** The platform maps its internal `STOPPED` to `TERMINATED` on the way out, so `STOPPED` is a filter value no read ever returns. Six places said the opposite, and a deleted group was going to be reported as live. A deleted group is also invisible without `statuses=["TERMINATED"]`, and a read by id comes back not-found.
+- **Retiring a conversion rule detaches it from every campaign that optimized toward it**, in one account-wide write; a campaign left with no other optimized rule then falls back to its group's goal. The plugin said the campaign keeps optimizing toward the retired rule and the group does not take over — backwards. Campaign *groups* are not cleaned up this way, so a group can keep pointing at a dead rule; the warning moved there.
+- **A campaign's conversion rules already arrive with their name, status and optimization flag.** `conversion_rules.rules` carries `display_name`, `status`, `include_in_total_conversions` and `is_optimization_enabled` — the `{id}`-only shape is the *write* schema, generalized onto reads by mistake. The per-id round-trip is no longer required to name the event.
+- **`is_optimization_enabled: false` means a rule is only tracked, not optimized toward.** The plugin called every listed rule the campaign's goal, which is a wrong-KPI answer whenever a tracked rule is present.
+- **`0 / 0 / 0` ad counts are not evidence of a problem.** A catalog campaign reports zero while serving normally — the zeros are substituted when no directly attached ads exist — and the optimization gate stopped and declared that the cause. An RSS campaign reads zero until its feed is first read, and any campaign reads zero while its first ads are still being crawled. Ads placed from the creative library are counted from the start, so a library campaign reading zero really is empty. `list_items` cannot settle it either: it returns nothing for a catalog campaign, and on an RSS campaign it hides the generated ads behind the feed. No campaign field separates a catalog campaign from a genuinely empty one, so the gate now reports and continues instead of stopping.
+- **The budget-field rule is keyed to managed-vs-`CUSTOM`, not to `AUTOMATIC`.** All five locked fields lock in a `FULLY_SHARED` group too, and omitting them there is safe — the campaign inherits the group's budget rather than being rejected. One table cell said both things in one line.
+- **A campaign's `marketing_objective` is editable on update**, not locked at create. `update_campaign` accepts it and the API has no read-only check for it on campaigns. The read-only-unless-enabled rule belongs to campaign *groups*, where it defaults to off.
+- **The bid-strategy rewrite has three documented exceptions**, now listed once in the write-surface reference instead of being restated in the guardrails and the agent file. Only the automatic split rewrites bid strategies; a shared-split group still rewrites member budgets on a budget change. The preview still states the rewrite as what will happen, and now offers to check the members rather than claiming either outcome is settled.
+- **Reading a group by id is right for the wrong reason.** The listing hydrates conversion rules through the same service as the by-id read; what it genuinely leaves out is `conversion_configuration`, the attribution window. The 2026-10-14 production observation behind the old rule was a group that simply had no rules.
+
 ### Fixed
 
 - **No more "raise bid" advice for Maximize Conversions.** The algorithm sets the bid, so there is no bid to raise. `knowledge/bidding.md`'s *When to Switch Strategies* and *CPA Spike Signal Table* rows now say "Expand targeting, consider splitting out top placements".
-- **Group reads go by id.** The list form returns `conversion_rules: null` for a group that reads back fine by id, so using it to re-read a known group made a readable group look unreadable.
+- **Group reads go by id** — the list form leaves the group's attribution window (`conversion_configuration`) unpopulated, and only the by-id read fetches it.
 - **`search_geos` takes `dma`, not `dmas`** — the call was rejected outright.
 
 ### Directory submission fixes (DEV-240750)

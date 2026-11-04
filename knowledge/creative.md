@@ -229,8 +229,28 @@ A campaign payload usually also carries **`inventory_summary`** (`number_of_item
   partly live rather than merely partly approved, read item `status` from `list_items`.
 - **There is no pending count.** Pending is total minus approved minus rejected.
 - **It can be missing entirely** on credentials without the inventory-summary permission.
-- **`0 / 0 / 0` does not mean "no ads".** Only directly attached items are counted, so a campaign fed
-  from a feed or a library reads zero while running fine.  **Never call a campaign empty on this field alone** — confirm with `list_items`.
+- **`0 / 0 / 0` does not mean "no ads", and `list_items` will not settle it.** The count covers the campaign's own
+  attached ad rows once they are fully registered — an ad awaiting approval *is* counted, a deleted one is not — and the
+  zeros are *substituted* when there are none, so the field is present and reads zero rather than going absent. Three
+  kinds of campaign read zero while perfectly healthy:
+  - a **catalog** campaign, whose products are not ad rows at all, reads zero for its whole life;
+  - a campaign whose ads are **still being crawled**: a newly added ad is not counted until its crawl resolves, so a
+    campaign set up minutes ago reads zero. (On accounts with the creative library switched on a new ad is registered
+    immediately, so that gap does not arise there.)
+  - an **RSS** campaign reads zero until its feed is first read; after that its generated ads are counted.
+
+  An ad placed from the **creative library** is an ordinary attached ad, counted from the start, so a library campaign
+  reading zero really is empty. **No field on the campaign payload separates any of these from a genuinely empty
+  campaign** — `campaign_item_type` looks like it should, but it is a one-way latch set on the first ad and never reset,
+  so all of them sit on one of the `HAS_NO_ITEMS*` values (there is one per ad format, so test the prefix, not the bare
+  `HAS_NO_ITEMS`). `list_items` does not resolve it either: it returns nothing at all for a catalog campaign, and on an
+  RSS campaign it lists the feed while hiding the generated ads, so `number_of_items` there can far exceed the rows
+  `list_items` returns — that gap is by design, not a bug. So never call a campaign empty on a `0 / 0 / 0`: say it has no
+  counted ads, and ask whether it runs on a product catalog or an RSS feed, or was only just set up. The user knows;
+  nothing in the payload does. A **non-zero** total with `number_of_approved_items: 0` is the trustworthy case — there,
+  nothing really is approved. (Counting query, crawl path and the library and RSS paths verified against platform source
+  2026-11-04; the catalog case is inferred from catalog ads living outside the counted table, not from a line that
+  states it.)
 
 ---
 
