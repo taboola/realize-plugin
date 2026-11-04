@@ -35,7 +35,7 @@ Applied here:
 
 ### Fixed — claims the platform source contradicts
 
-Checked against the `products` and `realize-mcp-server` sources at `origin/master`, and against live payloads, on 2026-11-03.
+Checked against the Realize platform and MCP sources, and against live payloads, on 2026-11-03.
 
 - **A rejected ad can be edited** — that is how it is resubmitted. It cannot be set active in the same write, and some accounts cap resubmissions.
 - **Switching a group to `AUTOMATIC` rewrites every member campaign's bid strategy** to Maximize Conversions. The preview described budget control only.
@@ -51,7 +51,7 @@ Four of these contradict the MCP's own tool descriptions; they are recorded here
 
 ### Fixed — second source-check pass (review feedback on #24)
 
-Re-checked against `products` and `realize-mcp-server` at `origin/master` on 2026-11-04. Nine corrections, all of which changed what the agent is told to do.
+Re-checked against the Realize platform and MCP sources on 2026-11-04. Twelve corrections, all of which changed what the agent is told to do.
 
 - **A deleted campaign group reads back `TERMINATED`, not `STOPPED`.** The platform maps its internal `STOPPED` to `TERMINATED` on the way out, so `STOPPED` is a filter value no read ever returns. Six places said the opposite, and a deleted group was going to be reported as live. A deleted group is also invisible without `statuses=["TERMINATED"]`, and a read by id comes back not-found.
 - **Retiring a conversion rule detaches it from every campaign that optimized toward it**, in one account-wide write; a campaign left with no other optimized rule then falls back to its group's goal. The plugin said the campaign keeps optimizing toward the retired rule and the group does not take over — backwards. Campaign *groups* are not cleaned up this way, so a group can keep pointing at a dead rule; the warning moved there.
@@ -61,6 +61,9 @@ Re-checked against `products` and `realize-mcp-server` at `origin/master` on 202
 - **The budget-field rule is keyed to managed-vs-`CUSTOM`, not to `AUTOMATIC`.** All five locked fields lock in a `FULLY_SHARED` group too, and omitting them there is safe — the campaign inherits the group's budget rather than being rejected. One table cell said both things in one line.
 - **A campaign's `marketing_objective` is editable on update**, not locked at create. `update_campaign` accepts it and the API has no read-only check for it on campaigns. The read-only-unless-enabled rule belongs to campaign *groups*, where it defaults to off.
 - **The bid-strategy rewrite has three documented exceptions**, now listed once in the write-surface reference instead of being restated in the guardrails and the agent file. Only the automatic split rewrites bid strategies; a shared-split group still rewrites member budgets on a budget change. The preview still states the rewrite as what will happen, and now offers to check the members rather than claiming either outcome is settled.
+- **Campaign-group names are unique per account and the platform enforces it** — the plugin said they were not guaranteed unique. A colliding create or rename comes back a 400, and the agent had nothing naming that as a failure mode. A **deleted** group also keeps its name reserved while the default listing hides it, so the blocking group can be one the agent cannot see without asking for `TERMINATED`.
+- **`spending_limit_model: NONE` on its own is a valid group budget.** The plugin required `daily_cap` and `STRICT` pacing with it unconditionally, so it refused a create the platform accepts. The cap is required only once another budget field travels with `NONE` — and the same table already described bare `NONE` as the unlimited budget one row up.
+- **Creating a campaign into a `CUSTOM` group without budget fields does not leave it without a budget** — it copies the group's budget onto the campaign in full and undivided — the group's monthly limit if it has one, otherwise its lifetime total, plus the group's daily cap and pacing, never a share. The plugin documented those fields as merely optional there, so a campaign the user expected to be capped by the group could be created able to spend the whole group budget. Two adjacent traps are now stated: with an unlimited group budget the same omission is rejected for a missing `daily_ad_delivery_model`, and sending any one of the four makes two of them required.
 - **Reading a group by id is right for the wrong reason.** The listing hydrates conversion rules through the same service as the by-id read; what it genuinely leaves out is `conversion_configuration`, the attribution window. The 2026-10-14 production observation behind the old rule was a group that simply had no rules.
 
 ### Fixed
@@ -70,8 +73,42 @@ Re-checked against `products` and `realize-mcp-server` at `origin/master` on 202
 - **`search_geos` takes `dma`, not `dmas`** — the call was rejected outright.
 
 ### Directory submission fixes (DEV-240750)
+The directory check held 0.5.4 for policy review. This release clears every finding that needs a code change, and the follow-up code review's findings on that fix. Version set in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `.mcp.json`'s `X-Realize-Client` header.
 
-`allowed-tools` narrowed on every skill (no bare `Bash`, `Write` or `Edit`; CI holds them to an allowlist), credential-shaped literals removed from shipped test fixtures, `privacyPolicyUrl` added, and the pixel-page download moved into a shipped script rather than a command in prose. Details in `.claude/CLAUDE.md` → *Shipped files must pass the Anthropic directory check*.
+**Permissions (`ALLOWED_TOOLS_BROAD`, unscoped fetch)**
+- No skill pre-approves bare `Bash` or `Write` any more.
+  - `accounts`, `campaigns`, `optimize-campaign` and `reports` drop `Bash`; they never used it.
+  - `discovery` and `manage-campaigns` (including `references/mcp-write-surface.md`) use the `Grep` tool for overflow dumps.
+- `support` pre-approves only the three exact commands it runs: `node "${CLAUDE_PLUGIN_ROOT}/skills/support/scripts/build-bundle.js" --preview`, and `--write` with `--complaint-file ~/.realize-plugin/tmp/complaint-*.txt` or `--title-file ~/.realize-plugin/tmp/title-*.txt`. The path is quoted for install paths with spaces. A `:*` suffix had matched `--out <any path> --force --allow-git` too. Writes are scoped to `Edit(~/.realize-plugin/tmp/**)`, because a `Write(path)` rule is never consulted and bare `Write` allowed writing anywhere.
+- `diagnose-tracking` pre-approves no command. Each page fetch shows the user a prompt with the exact URL, so an instruction planted in a page or HAR can't send data anywhere silently.
+- `web-fallback` scopes `WebFetch` to `realize.com` / `www.realize.com`.
+
+**Pixel page download (`RUNTIME_FETCH_EXEC`)**
+- The `curl` line in `diagnose-tracking/SKILL.md` and the agent is replaced by a shipped script, `skills/diagnose-tracking/scripts/fetch-page.js`, with no dependencies and 114 unit tests.
+- It allows http/https only on every hop, at most 3 redirects, a 20 s timeout and a 5 MB cap. It refuses `user:pass@` URLs and sends no cookies.
+- **Private, loopback, link-local and metadata addresses are refused on every hop**, IPv6 forms that embed an IPv4 address included (`[::ffff:127.0.0.1]`, which the URL parser rewrites to `[::ffff:7f00:1]`; IPv4-compatible, NAT64, 6to4), plus site-local `fec0::/10`, local-use NAT64 `64:ff9b:1::/48`, `192.0.0.0/24` (Oracle Cloud's metadata address is `192.0.0.192`) and the `198.18.0.0/15` benchmarking range. The check runs inside each connection's own DNS lookup, so a name can't answer "public" to the check and "127.0.0.1" to the connection (DNS rebinding), and the 20 s timeout covers the lookup. The old `curl` line would follow a redirect into the user's network.
+- A `www.` redirect no longer counts as a host change; it previously skipped the static check on most real sites. A URL without a scheme gets `https://`.
+- Network failures name their cause (DNS, TLS, refused) instead of a bare "fetch failed".
+- **Corporate networks are best effort, not `curl` parity.** When a proxy variable is set, or a certificate error occurs, the script re-runs itself with the OS certificate store (Node 22.15+/23.8+) and env-proxy support (`NODE_USE_ENV_PROXY`, Node 22.21+ and 24+). Through a proxy the private-address check covers literal-IP hosts only, since the proxy resolves names. Older Node on a proxy-only network can't reach the page; the error says so, and the skill falls back to the user's browser capture.
+- The URL is a single-quoted positional argument. There is no file-reading option that could echo a local file.
+- Each run saves into its own fresh temp folder; this user's folders from earlier runs are pruned after an hour.
+
+**Support bundle**
+- Invoked via `"${CLAUDE_PLUGIN_ROOT}/…"` instead of a repo-relative path, so `/support` works for people who installed the plugin.
+- `--complaint-file` / `--title-file` read only `complaint-*.txt` / `title-*.txt` files directly in `~/.realize-plugin/tmp` (realpath-checked; `..`, symlinks and hard links refused), so the unprompted script can't copy an arbitrary file into an email attachment. Each run uses its own file name, so concurrent runs can't read each other's text.
+- The script deletes the complaint file after writing; leftovers from cancelled runs are pruned after a day. Previously the cleanup relied on a model-run `rm` the user could decline. A failed delete is a warning, not a failed bundle.
+- **The script itself limits writes**, because a permission rule can't pin every argument. `--force` and `--allow-git` need an interactive terminal, which the model never has. `--out` must be a new `.md` file directly in Desktop, Downloads, home or the temp folder, never a symlink, and the file is opened exclusively (`wx`). Before this, `--out ~/.zshrc --force` overwrote the user's shell startup file with the transcript.
+
+**Other**
+- **Node.js is not assumed.** The native installer and desktop app don't include it. The pixel check falls through to the browser capture, and `/support` points the user to emailing Support directly. `INSTALL.md` states the requirement, and both scripts' "Node ships with Claude Code" comments are corrected.
+- `agents/realize-analyst.md`: gains `Write`, which `/support` needs when run through the agent, and no longer names a repo-relative script path.
+- **`UNREAD_ASSET_REFERENCED` (7):** docs and CI no longer name the listing icon by path. The duplicate CI icon check is removed, because the directory check reports a missing icon itself.
+- **Tests:** test fixtures that look like a local-file URL or a `user:pass@` URL are assembled at runtime, the same rule as `test-build-bundle.js`.
+- **`INSTALL.md` / settings example:** the `Bash(curl:*)` opt-in is removed. The page-fetch section now says the prompt is deliberate instead of claiming "no opt-in needed", which was wrong: a skill grant lasts one turn.
+- **CI:** runs `test-fetch-page.js`. *Directory-check guards* now holds every skill's `allowed-tools` to an allowlist: plain read tools, domain-scoped `WebFetch`, the one scoped `Edit`, and only the skill's **own** script in the exact quoted form. No `..`, no other skill's script, and no bare `*` — a `*` is allowed only inside a filename, as in `complaint-*.txt`.
+- **Left for the reviewer:**
+  - `MCP_FORWARDS_CREDENTIAL_ENV`: nothing reads a credential. Login is Claude Code's OAuth against the MCP, and the only header is the static client identifier.
+  - `UNKNOWN_KEY` on `privacyPolicyUrl`: the finding says no action is needed.
 
 ## [0.5.4] — Unreleased (pending directory review)
 
