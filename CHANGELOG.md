@@ -9,6 +9,15 @@ All notable changes to this plugin will be documented here. Format loosely follo
 - **Codex subtitle shortened** to "Manage Realize campaigns" to fit OpenAI's 30-character `shortDescription` limit.
 - **OpenAI submission branch.** The OpenAI zip is built from `openai-submission`. That branch differs from `main` only in `.mcp.json`, which drops the `X-Realize-Client` header and the `oauth.callbackPort` entry because OpenAI configures OAuth in its portal. `main` keeps both, since the Claude Code install and the Anthropic directory need them. Traffic from the OpenAI build therefore carries no `X-Realize-Client` attribution.
 
+## [0.5.7] — Unreleased
+
+### Target CPA timing and budget multiple
+- **Target CPA waits for 50 conversions over a 7-day period**, not 3-4 days. Elapsed days alone are not the test: a low-volume campaign can run for days without enough data. On a new campaign, the plugin offers Maximize Conversions, not Target CPA. Updated in `knowledge/bidding.md` and the Target CPA lines in `optimize-campaign`.
+- **The first Target CPA starts ~20% above** the average CPA over that window (was "within 10-20% of stable CPA" or "at or near current CPA"), using post-click CPA only. The worked example in `knowledge/bidding.md` now starts at ~$31 for a $26 actual CPA.
+- **Maximize Conversions daily budget is 10-15× the CPA goal at setup**, with 10× as the minimum once the campaign has stabilised. $50 minimum when CPA is under $5 is unchanged. Updated in `knowledge/budget.md`, `knowledge/bidding.md`, `knowledge/manifest.json` and the two budget examples in `os/guardrails.md`.
+- The `manage-campaigns` budget table still says 10×; it changes in a follow-up once the open `manage-campaigns` work lands.
+- Version 0.5.7 in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` and `.mcp.json`.
+
 ## [0.5.5] — Unreleased (pending directory review)
 
 ### Directory submission fixes (DEV-240750)

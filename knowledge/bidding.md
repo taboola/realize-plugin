@@ -40,7 +40,7 @@ ONLINE_PURCHASES / LEADS_GENERATION / MOBILE_APP_INSTALL **typically** require a
 
 **Recipe when pixel + purchase rule are pending:**
 
-1. Stage the campaign with `marketing_objective=ONLINE_PURCHASES` (or LEADS_GENERATION for lead-generation campaigns), `bid_strategy=MAX_CONVERSIONS`. Omit `cpc` (algorithm decides). Set a reasonable daily_cap to give the algo room (rule of thumb: daily_cap ≥ 10× expected CPA).
+1. Stage the campaign with `marketing_objective=ONLINE_PURCHASES` (or LEADS_GENERATION for lead-generation campaigns), `bid_strategy=MAX_CONVERSIONS`. Omit `cpc` (algorithm decides). Set a reasonable daily_cap to give the algo room (rule of thumb: daily_cap ≥ 10× expected CPA; aim for 10-15× at setup).
 2. If the goal is ROAS-driven AND value reporting will land later, use `MAX_VALUE` instead of MAX_CONVERSIONS — same shape, value-weighted optimisation.
 3. If the API rejects the create call because no conversion rule is attached, attach a placeholder rule from the account (any active rule resolved via `get_conversion_rules`) and note that it is a placeholder — swap for the real purchase rule once the pixel is installed. If the account has no usable rule at all, one can now be created via `create_conversion_rule` through the `manage-campaigns` write gate — but the pixel still has to be installed in the UI before the rule records anything.
 4. After the real conversion rule is created (also a gated MCP write — `create_conversion_rule` via `manage-campaigns`), call `update_campaign` to detach the placeholder and attach the real one. Bid strategy stays MAX_CONVERSIONS (or upgrades to MAX_VALUE).
@@ -124,8 +124,8 @@ The primary recommendation is **Maximize Conversions** for best performance. Oth
 
 | Strategy | Automation | Budget Requirement | Baseline Bid | First Days Expectation |
 |---|---|---|---|---|
-| **Maximize Conversions** | Fully automated | Daily: 10× expected CPA goal. $50 minimum if CPA is under $5. | N/A (auto) | First 2-4 days: CPA fluctuations. Then CPA decreases and stabilises, conversion volume increases. **Strongly recommended not to adjust the campaign during this window.** |
-| **Maximize Conversions + Target CPA** | Fully automated | Daily: 10× expected CPA goal. $50 minimum if CPA is under $5. | Set Target CPA with a realistic goal | Target CPA can reduce campaign scale if the target is far from actual performance. **Apply only as a last resort when performance is so poor the campaign is at risk of being paused.** |
+| **Maximize Conversions** | Fully automated | Daily: 10-15× expected CPA goal at setup; 10× is the minimum once the campaign has stabilised. $50 minimum if CPA is under $5. | N/A (auto) | First 2-4 days: CPA fluctuations. Then CPA decreases and stabilises, conversion volume increases. **Strongly recommended not to adjust the campaign during this window.** |
+| **Maximize Conversions + Target CPA** | Fully automated | Daily: 10-15× expected CPA goal at setup; 10× is the minimum once the campaign has stabilised. $50 minimum if CPA is under $5. | Set Target CPA with a realistic goal | Target CPA can reduce campaign scale if the target is far from actual performance. **Apply only as a last resort when performance is so poor the campaign is at risk of being paused.** |
 | **Enhanced CPC** | Semi-automated | Daily: 5× CPA goal. Monthly: 150× CPA goal. | Known CVR: CPC = CPA goal × CVR. Unknown CVR: similar segment average CPC. | Learning phase typically a little longer than other strategies (~11 days observed), but read `cvr_learning_status` rather than waiting out a day count. Performance less stable, fluctuations in CTR and CPA during adjustment. |
 | **Fixed Bid** | Manual | According to advertiser requirements | According to advertiser requirements | N/A |
 
@@ -138,7 +138,9 @@ The primary recommendation is **Maximize Conversions** for best performance. Oth
 
 ### Critical Target CPA Rules
 
-- **Never set Target CPA immediately at campaign launch.** Allow the campaign to gather performance data for the first 3-4 days. Once CPA has stabilised, use that data as the benchmark.
+- **Never set Target CPA immediately at campaign launch.** Wait until the campaign has **50 conversions over a 7-day period** and CPA has levelled off, then use the average CPA over that window as the benchmark. Elapsed days alone are not the test: a low-volume campaign can run for days without getting near 50 conversions.
+- So on a new campaign, don't offer Target CPA as a bid strategy. Offer Maximize Conversions, and suggest Target CPA only once the 50-conversion / 7-day bar is met.
+- **Setting a first Target CPA:** start ~20% above the average post-click CPA over that 50-conversion / 7-day window. Don't base it on the advertiser's other channels. Lower it only after it holds steady, never by more than 20% at a time, and never below the campaign's actual average CPA.
 - Setting Target CPA too early can significantly prolong the learning phase and delay stabilisation.
 - Once Target CPA is set, allow the algorithm to optimise. The full budget may not deplete due to the CPA constraint.
 
@@ -150,7 +152,7 @@ When recommending a Target CPA value, the value you set matters as much as the d
 
 - The user's stated CPA *goal* (e.g., "I want CPA = $16") is the destination, not the starting Target CPA value.
 - If the campaign's actual current CPA is $26, starting Target CPA at $16 is too aggressive: the algorithm will throttle bids hard to chase a target it can't currently hit, scale will collapse, and the campaign may stop spending entirely.
-- Start Target CPA at ~$26 (or even slightly higher — $28–$30). Once the campaign stabilises at that level for **5–7 days**, drop the target by ~10–15%. Continue stepping down only after each new level stabilises.
+- Start Target CPA ~20% above it (~$31). Once the campaign stabilises at that level for **5–7 days**, drop the target by ~10–15%. Continue stepping down only after each new level stabilises.
 - If you cannot get within striking distance of the aspirational goal after 2–3 step-down cycles, the path forward is **NOT** to lower the target further — it's to address what's preventing CPA from dropping (creative refresh, audience expansion, site exclusions, landing-page fixes).
 
 **Why this matters:** A Target CPA set far below actual CPA is the same shape as "set Target CPA aspirationally" — the algorithm cannot hit it, scale drops, and the campaign produces less data, which makes the next optimization round harder. Calibration is a stepwise descent, not a single jump.
@@ -159,7 +161,7 @@ When recommending a Target CPA value, the value you set matters as much as the d
 
 | Current State | Signal | Action |
 |---|---|---|
-| Maximize Conversions, CPA too high | CPA consistently above goal after learning phase | Add Target CPA — set at or near current actual CPA, not an aspirational target. Expect a scale drop if the target is lower than existing performance. Check average CPA from past weeks using post-click performance only. |
+| Maximize Conversions, CPA too high | CPA consistently above goal after learning phase | Add Target CPA — start ~20% above current actual CPA, not at an aspirational target. Use the average post-click CPA over the 50-conversion / 7-day window. |
 | Maximize Conversions, scale is low | Budget not depleting | Use auction insights to investigate. Consider expanding targeting and refreshing ads. Raise budget, broaden targeting. |
 | Maximize Conversions, high CTR low CVR | Good clicks but no conversions | Reassess landing-page quality, check creative relevance, adjust targeting. |
 | Maximize Conversions, high CVR low scale | Converting well but not enough volume | Expand targeting, consider splitting out top placements. |
@@ -291,7 +293,7 @@ CPA volatility immediately after launch is common — the algorithm is learning 
 | High CVR, Low Scale | Expand targeting, move to Maximize Conversions (if not already), consider splitting out top placements. |
 | Steady scale, High CPA | Add predictive or CRM audience layering, refresh creative, refine site list. |
 | Stalled scale post-launch | Wait until `cvr_learning_status` reports out of learning (typically ~7-10 days, but the status decides). Review targeting or bid constraints. Use auction insights. |
-| Maximize Conversions active, CPA too high | Add Target CPA — expect a scale drop if the target is lower than existing performance. Check average CPA from past weeks (post-click only). Consider blocking underperforming sites using Custom Rules. |
+| Maximize Conversions active, CPA too high | Add Target CPA — start ~20% above the average post-click CPA over the 50-conversion / 7-day window. Expect some scale loss: Target CPA puts cost ahead of volume. Consider blocking underperforming sites using Custom Rules. |
 | Maximize Conversions active, scale is low | Use auction insights. Consider expanding targeting and refreshing ads. Raise budget, broaden targeting. |
 
 ---
@@ -350,7 +352,7 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 
 ## Guardrails
 
-- Never set Target CPA immediately at campaign launch — wait 3-4 days for data.
+- Never set Target CPA immediately at campaign launch — wait for 50 conversions over a 7-day period.
 - Never set Target CPA far from actual performance — it can significantly decrease scale.
 - Never make frequent campaign changes during the learning phase — this resets learning and worsens performance.
 - Never reduce budget aggressively during learning — moderate adjustments only, and only if absolutely necessary.
@@ -367,8 +369,8 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 
 ## Common Mistakes
 
-1. **Setting Target CPA too early.** Prolongs learning phase, delays stabilisation. Wait 3-4 days for data first.
-2. **Setting an aspirational Target CPA.** Algorithm cannot hit an unrealistic target, scale drops. Set at or near actual current CPA.
+1. **Setting Target CPA too early.** Prolongs learning phase, delays stabilisation. Wait for 50 conversions over a 7-day period first.
+2. **Setting an aspirational Target CPA.** Algorithm cannot hit an unrealistic target, scale drops. Start ~20% above actual current post-click CPA.
 3. **Frequent budget changes during learning.** Resets learning each time. Make one change, wait 2-3 days.
 4. **Reducing budget to fix high CPA.** Limits the algorithm's ability to optimise. Address root cause (tracking, creatives, targeting) instead.
 5. **Blocking publishers based on Sponsored Content performance in display campaigns.** Sponsored Content and Display have different dynamics — evaluate each campaign type independently.

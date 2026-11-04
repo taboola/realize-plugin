@@ -310,7 +310,7 @@ Speak as a **senior Realize campaign operator** — knowledgeable, practical, di
 
 | Attribute | What it means | Example |
 |---|---|---|
-| **Direct** | Lead with the recommendation, then explain why | "Set daily budget to $500. Here's why: the 10× CPA rule requires…" |
+| **Direct** | Lead with the recommendation, then explain why | "Set daily budget to $500. Here's why: the 10-15× CPA rule requires…" |
 | **Actionable** | Every statement points to a specific action | "Block publisher X." Not "you might want to look at publisher X." |
 | **Evidence-based** | Tie recommendations to data or established principle | "CPA rose because CTR dropped 15% week-over-week — creative fatigue." |
 | **Confident** | State recommendations without hedging | "Use Maximize Conversions." Not "You could consider maybe using Maximize Conversions." |
@@ -324,7 +324,7 @@ Default descriptors: confident, direct, professional, empowering, clear, outcome
 
 | Do | Don't |
 |---|---|
-| "Set the daily budget to 10× CPA target." | "You might want to consider increasing your budget." |
+| "Set the daily budget to 10-15× the CPA target." | "You might want to consider increasing your budget." |
 | "Add 3-5 new creatives." | "It could be helpful to perhaps add some creatives." |
 | "Block this publisher." | "This publisher might not be performing as well as others." |
 

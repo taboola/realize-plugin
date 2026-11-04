@@ -2,7 +2,7 @@
 
 ## Overview
 
-Managing budgets effectively sustains performance while minimising waste. Start with a modest daily budget relative to campaign goals and scale gradually as performance stabilises — this gives the algorithm time to learn and optimise. This file covers the 10× CPA rule, pacing, scaling, and short-burst campaign handling.
+Managing budgets effectively sustains performance while minimising waste. Start with a modest daily budget relative to campaign goals and scale gradually as performance stabilises — this gives the algorithm time to learn and optimise. This file covers the 10-15× CPA rule, pacing, scaling, and short-burst campaign handling.
 
 > **Attribution note:** When comparing budget outcomes against CPA goals, always state the attribution model used (`CPA (CT only)`, etc.).
 
@@ -10,22 +10,22 @@ Managing budgets effectively sustains performance while minimising waste. Start 
 
 ## Budget Planning
 
-### The 10× CPA Rule
+### The 10-15× CPA Rule
 
 For campaigns using **Maximize Conversions**, the daily budget must be:
 
 | CPA Level | Daily Budget Requirement |
 |---|---|
-| CPA ≥ $5 | **10× target CPA per campaign** (e.g., $500 for a $50 CPA goal) |
+| CPA ≥ $5 | **10-15× target CPA per campaign** (e.g., $500-$750 for a $50 CPA goal) |
 | CPA < $5 | **$50 minimum** daily budget |
 
-If 10× isn't feasible upfront, start smaller and increase once enough data is collected to evaluate trends.
+If 10-15× isn't feasible upfront, start smaller and increase once enough data is collected to evaluate trends. Once the campaign has stabilised, **10× CPA is the minimum**.
 
 ### Budget by Bidding Strategy
 
 | Strategy | Daily Budget | Monthly Budget |
 |---|---|---|
-| **Maximize Conversions** | 10× expected CPA (or $50 min) | — |
+| **Maximize Conversions** | 10-15× expected CPA at setup, 10× minimum once stable (or $50 min) | — |
 | **Enhanced CPC** | 5× CPA goal | 150× CPA goal |
 | **Fixed Bid** | According to advertiser requirements | According to advertiser requirements |
 
@@ -141,7 +141,7 @@ This rule applies to budget post-mortems, A / B tests with different arm budgets
 
 ## Guardrails
 
-- Never set daily budget below 10× target CPA for Maximize Conversions campaigns ($50 minimum if CPA < $5).
+- Never set daily budget below 10× target CPA for Maximize Conversions campaigns ($50 minimum if CPA < $5). At setup, aim for 10-15×.
 - Never increase budget by more than 20% at a time.
 - Never make frequent budget changes (more often than every 2-3 days) — this destabilises the algorithm.
 - Never reduce budget during the learning phase unless absolutely necessary.
