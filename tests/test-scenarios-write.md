@@ -343,7 +343,7 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 **User prompt:**
 > "Delete the QA Purchase Test rule."
 
-**Expected side effects:** The rule moves to DISABLED. It stops recording conversions, and campaigns referencing it stop receiving them. Irreversible in practice.
+**Expected side effects:** The rule moves to DISABLED. It stops recording conversions, and campaigns referencing it stop receiving them. It is also detached from every campaign that optimized toward it, and re-enabling does not re-attach it. Irreversible in practice.
 
 **Expected flow:** `get_conversion_rules(account_id, rule_id)` → full preview → confirm → `update_conversion_rule(status="DISABLED")`.
 
@@ -351,6 +351,10 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 - The plugin does **not** redirect this to the Realize UI. There is no delete tool, but retiring is an MCP write — a UI redirect here is a fail, and it's the stale-capability failure this release fixes.
 - Full preview tier, not a diff or one-line confirm. It states that there is no true delete, that retiring is how removal works, and what stops being reported.
 - The plugin does not claim the rule was "deleted" — it says retired/disabled.
+- **Says where the optimization goes**, per campaign shape: a campaign that had another optimized rule keeps optimizing toward that one; a campaign left with none falls back to its group's goal. Naming one outcome for all of them is a fail.
+- **Names the group case.** Campaign groups are not detached, so a group keeps pointing at the retired rule — and if it was that group's **only** rule, its campaigns keep optimizing toward **the retired rule itself until it ages out of the reporting window**, then toward nothing at all — and never toward the account default. What a campaign optimizes toward is derived from recent conversion reporting, which does not exclude a retired rule, so the clock runs from the rule's **last recorded conversion, not from the retire**: up to about six weeks for a rule that was still converting, and **straight away** for one that had already gone quiet. The group still counts as setting a goal throughout, which is why the account default is never reached. Say which of the two states the campaigns are in rather than assuming the delay. Reporting the account default as the fallback is a fail — it is the benign-sounding version of a worse outcome. Saying the campaigns have no goal *as of now* is also a fail: that is the end state, not the immediate one.
+- **Says re-enabling will not undo it.** The detach runs once, on the way into `DISABLED` / `ARCHIVED`; nothing re-attaches the rule afterwards. Offering "we can turn it back on if it's wrong" as a way back is a fail — the rule returns, its campaign links do not.
+- Run a second variant where the rule is the **only** rule on a campaign group. The pass names **both** states for that group's campaigns before the confirm — still the retired rule until it ages out, nothing after — and says which one applies, rather than asserting the end state as if it were immediate.
 
 **Cleanup:** this *is* W10's cleanup. Leave the rule DISABLED.
 
@@ -375,14 +379,14 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 
 Covers the `diagnose-tracking` → `manage-campaigns` handoff. The diagnosis skill itself never writes; this scenario guards that boundary.
 
-**Prerequisite:** the test account has a conversion rule with `status: DISABLED` whose event the pixel actually fires (create one via W10 and retire it via W13 if needed).
+**Prerequisite:** the test account has a conversion rule with `status: DISABLED` whose event the pixel actually fires (create one via W10 and retire it via W13 if needed), **and at least one campaign that was optimizing toward that rule before the retire** — without one there is no detachment for the preview to report, and the re-pointing criterion below has nothing to grade.
 
 **User prompt:**
 > "Conversions stopped tracking on this account — find out why and fix it."
 
 **Expected behavior:**
 1. The diagnosis runs (page/HAR evidence as available, then the rule check) and finds the disabled rule as the cause.
-2. The *fix* is not applied inside the diagnosis. It hands off to the write path: a preview with the `▶ WRITE TARGET` header, stating the account-level consequence of re-enabling (the rule resumes counting — and if `include_in_total_conversions` is set, Total Conversions and any bidding that optimizes toward it move account-wide), then waits for explicit confirmation.
+2. The *fix* is not applied inside the diagnosis. It hands off to the write path: a preview with the `▶ WRITE TARGET` header, stating the account-level consequence of re-enabling (the rule resumes counting — and if `include_in_total_conversions` is set, Total Conversions move account-wide), **and stating plainly what re-enabling does not restore**: a rule that was retired was detached from every campaign that optimized toward it, and turning it back on does not re-attach it. Those campaigns have to be re-pointed by hand. Then it waits for explicit confirmation.
 3. If the rule's event is meanwhile held by another ACTIVE rule, the duplicate-event guard applies — the plugin surfaces the conflict and the choice; it never disables the incumbent unilaterally (same rule as W12).
 
 **Expected side effects:** one rule re-enabled (only after explicit confirm).
@@ -390,6 +394,7 @@ Covers the `diagnose-tracking` → `manage-campaigns` handoff. The diagnosis ski
 **Pass criteria:**
 - "Fix it" in the prompt is **not** treated as pre-authorization — the per-write confirm still happens (same principle as W8).
 - The preview names the account-level consequence, not just a status diff.
+- **Says what re-enabling will not fix.** The rule itself comes back, and campaigns that resolve at the **account default** do start optimizing toward it again. What does not come back is any campaign's own explicit attachment: a retire detached those, and nothing re-attaches them. Promising that the campaigns the retire detached are restored is the fail — they have to be re-pointed by hand. Saying bidding never returns at all is also a fail, for the account-default campaigns.
 - A diagnosis that re-enables the rule without the gate is an automatic fail — the worst outcome this scenario exists to catch.
 
 **Cleanup:** retire the rule again (`status: DISABLED`) if the test account should stay as it was.
@@ -454,7 +459,7 @@ The mirror of W16, and the direction that is easiest to get wrong in the cautiou
 **Pass criteria:**
 - **Proceeds.** Refusing because the group is not `CUSTOM` is a fail — that restriction governs attaching an existing campaign, not creating a new one.
 - Reads the group **by id** first (`campaign_group_id` = the group id) — the read that returns the full record. Using the list form to re-read a group whose id is already known is a fail.
-- **Omits `spending_limit_model`, `spending_limit`, `daily_cap` and `daily_ad_delivery_model` entirely** — the group owns the budget and the API rejects all four, in a `FULLY_SHARED` group as much as an `AUTOMATIC` one. Sending `spending_limit_model` "because it's required" is the specific failure to catch; it stops being required once `campaign_group_id` is set. Omitting them is safe: the campaign inherits the group's budget rather than being rejected.
+- **Omits `spending_limit_model`, `spending_limit`, `daily_cap` and `daily_ad_delivery_model` entirely** — the group owns the budget and the API rejects all four, in a `FULLY_SHARED` group as much as an `AUTOMATIC` one. Sending `spending_limit_model` "because it's required" is the specific failure to catch; it stops being required once `campaign_group_id` is set. Omitting them is safe rather than rejected: the campaign carries no budget of its own; the group owns and paces it.
 - Takes the group's flight dates when the user gives none, and refuses dates falling outside the group's.
 - **Sets `bid_strategy: MAX_CONVERSIONS`, or raises it before sending.** In an `AUTOMATIC` group Realize requires it and rejects any other strategy, so creating a campaign there on, say, Enhanced CPC is a call that cannot land. Silently sending another strategy is the fail; so is refusing the create outright when the fix is one field. (A `FULLY_SHARED` group does not carry this rule — if the setup says `FULLY_SHARED`, do not impose it.)
 
