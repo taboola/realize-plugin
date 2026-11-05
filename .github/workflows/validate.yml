@@ -97,7 +97,7 @@ jobs:
         # body. Everything in the repo ships, so this is checked repo-wide.
         run: |
           set -euo pipefail
-          if git grep -nE '^(<{7}|={7}|>{7})( |$)' -- . ':!.github/workflows/validate.yml'; then
+          if git grep -nIE '^(<{7}|={7}|>{7})( |$)' -- . ':!.github/workflows/validate.yml'; then
             echo "::error::Unresolved merge conflict markers found in the lines above."
             exit 1
           fi
