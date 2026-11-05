@@ -49,7 +49,7 @@ A statistical-volume floor on the dimension item, plus a specific threshold for 
 1. **Is the budget big enough?** Daily budget ≥ **8× the CPA goal** (realize-toolkit operational guidance, Apr 2026). Below that the campaign cannot generate enough daily conversion signal to judge performance or feed the algorithm. Fix: raise the daily budget, or reset the CPA expectation.
 2. **Is it actually spending it?** Actual daily spend should come close to the daily budget. A campaign with an $800 budget spending $200 passes check 1 and still has no signal — and raising the budget does nothing, because it is not spending what it already has. That is a **delivery** problem (bid too low, targeting too narrow, supply blocked), and it routes to the delivery levers, not to a budget raise.
 
-Only prescribe a budget raise when check 1 fails. When check 1 passes and check 2 fails, say so explicitly rather than reaching for the budget.
+Only prescribe a budget raise when check 1 fails. When check 1 passes and check 2 fails, say so explicitly rather than reaching for the budget. **And before prescribing any budget raise anywhere in this file:** if the campaign has a `campaign_group_id`, read the group per `knowledge/campaign-structure.md` → *Reading a campaign group*. In a managed-budget group — any `budget_distribution_method` but `CUSTOM` — the budget lives on the group, the campaign's own budget fields are rejected by the API, and the raise is a group-level write — `update_campaign_group` through `manage-campaigns`, which reaches every campaign in the group.
 
 ### Site-blocking threshold
 
@@ -225,7 +225,7 @@ The canonical bid-lever matrix lives in `knowledge/bidding.md` ("Bid Levers — 
 | Bid Strategy | Optimises for | Valid action set |
 |---|---|---|
 | Maximize Conversions | Conversion volume | Structural levers only: site blocks, ad pause / refresh, budget changes, targeting changes, CPC cap (last-resort). Algorithm sets the bid. |
-| Maximize Value | Conversion value | Same structural levers as Maximize Conversions. ROAS target (`roasGoal`) is UI-only on DCO accounts — **not exposed via MCP**, so the optimize-campaign workflow cannot adjust it directly. |
+| Maximize Value | Conversion value | Same structural levers as Maximize Conversions. ROAS target (`roasGoal`) is set on the Realize screen on DCO accounts — **not something this plugin adjusts**. |
 | Target CPA | Conversions at target cost | Same as Maximize Conversions, plus Target CPA adjustment (last-resort lever — see hard rules below). |
 | Enhanced CPC | Conversions with CPC control | Full set: CPC bid changes, per-publisher bid boost / de-boost, structural levers. |
 | Fixed Bid (incl. VCPM Display) | Impressions at manual cost | Full set: bid changes, structural levers. |

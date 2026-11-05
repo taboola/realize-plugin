@@ -20,7 +20,9 @@ This is a thin Claude Code plugin that wraps the [Realize remote MCP](https://gi
 └──────────┬──────────┘
            │
            ├──► accounts skill        → search_accounts
-           ├──► campaigns skill       → list_campaigns, get_campaign, list_items, get_item
+           ├──► campaigns skill       → list_campaigns, get_campaign, list_items, get_item,
+           │                            get_campaign_groups (read-only; the group is the
+           │                            middle step in the conversion-goal chain)
            ├──► discovery skill       → search_geos, search_techno, search_audiences,
            │                            search_lookalike_audiences, search_contextual_segments,
            │                            search_publishers, get_conversion_rules,
@@ -40,14 +42,16 @@ This is a thin Claude Code plugin that wraps the [Realize remote MCP](https://gi
            │                              rule/report cross-checks. Rule fixes hand off
            │                              to manage-campaigns; Taboola-side gaps to the
            │                              support escalation. No pixel MCP tool exists.
-           ├──► manage-campaigns skill → 8 write tools: create_campaign, update_campaign,
+           ├──► manage-campaigns skill → 10 write tools: create_campaign, update_campaign,
            │                             create_native_item, update_native_item,
            │                             create_display_item, update_display_item,
-           │                             create_conversion_rule, update_conversion_rule.
+           │                             create_conversion_rule, update_conversion_rule,
+           │                             create_campaign_group, update_campaign_group.
            │                             Tiered preview-then-confirm with mandatory
            │                             ▶ WRITE TARGET account header.
-           │                             UI fallback for delete/duplicate/bulk ops
-           │                             and pixel install / test-fire.
+           │                             UI fallback for delete/duplicate/bulk ops,
+           │                             pixel install / test-fire, and moving or
+           │                             detaching a campaign between groups.
            │
            ├──► support skill  → NO MCP tools. Reads the local Claude Code
            │                             session transcript and renders one Markdown
@@ -64,7 +68,7 @@ This is a thin Claude Code plugin that wraps the [Realize remote MCP](https://gi
                      ▼
 ┌────────────────────────────────────────┐
 │ Realize MCP (https://mcp.realize.com)  │
-│  OAuth 2.1, 19 read + 8 write tools    │
+│  OAuth 2.1, 20 read + 10 write tools   │
 │  wired here. Writes routed exclusively │
 │  through the manage-campaigns skill.   │
 └────────────────────────────────────────┘
@@ -227,15 +231,41 @@ All Realize API access flows through MCP tools. Do not add Bash curl calls that 
 
 One sanctioned non-API use exists: `diagnose-tracking` downloads the raw HTML of **the user's page under diagnosis** with its own script, `skills/diagnose-tracking/scripts/fetch-page.js`. It allows http/https only on every hop, refuses private, loopback and link-local addresses on every hop (so a public page can't redirect the fetch into the user's network), allows at most 3 redirects, and has a timeout and a size cap. The user approves each run at a prompt. That's deliberate, not drift — `WebFetch` converts pages to readable text and strips every `<script>` tag (verified live 2026-08-22: a page with 11 script tags in raw HTML came back with zero code visible), so a WebFetch-based pixel check reports "no pixel" on every site. Don't "clean up" the download back to WebFetch, and don't swap the script for an inline `curl` — that brings back both `ALLOWED_TOOLS_BROAD` and `RUNTIME_FETCH_EXEC`. Run `node skills/diagnose-tracking/scripts/test-fetch-page.js` after touching it; CI runs it too.
 
+### Three sources of truth, and what this plugin may copy
+
+Raised in review on #24, three times over: the objective → KPI table the MCP tool already carries and enforces, the managed-budget enum spelled out across seven files, and a list of things *the MCP cannot do* that goes stale every time upstream ships. One mistake wearing three hats.
+
+| Layer | Answers | Owner |
+|---|---|---|
+| The Realize platform source | what the system actually does | Realize R&D |
+| The MCP tool schema and description | what the tool accepts, rejects and returns | the MCP team |
+| This plugin | which tool to reach for, and why | us |
+
+Each layer may **rely** on the one above it. None may restate it.
+
+- **Never copy a table the tool generates its own description from.** Objective → KPI is the worked example: upstream renders its tool description out of the very table its validator raises on, so there the text and the behaviour cannot drift apart — our copy was the only one that could. **The test is deliberately narrow.** Plenty of field tables here *are* load-bearing: the `bid_strategy` and `marketing_objective` enums the budget minimums key off, the campaign field tables the previews are built from. Applied too widely this rule would delete validation the plugin depends on. Copy nothing upstream already keeps in step with its own behaviour; keep what we need to decide something *before* making the call.
+- **Never maintain a list of what the MCP cannot do.** The tool list is that list, and it is upstream's to change. What we may state is what **this plugin** does not do — our own decision, which someone else's release cannot make wrong — and the Realize UI path, which is what the user actually needs.
+- **To the user the two cases sound identical, and should.** Whether we have not wired a tool or no API exists anywhere, the sentence they get is *"I don't do that here — it's at this screen."* Which of the two it is matters to us, for sync; it is not something to explain to them, and never a reason to say Realize or the MCP cannot do something. Keep the distinction in the maintainer docs and out of the agent's answers.
+- **The ban is on what the agent *says*, not on what it needs to route.** "No tool covers this, so hand it to the UI fallback" is a routing fact and belongs in the instructions. What may not appear is a catalogue of upstream's gaps, or wording the agent repeats to a user. A row label in an advice table counts as wording the agent repeats.
+- **One cataloguing exemption, and only one.** `docs/realize-best-practices-gap.md` Part 3 is a planning artifact — an upstream wishlist no skill loads at runtime — so it may list what is not exposed yet, with a verification date. No file the agent loads may.
+- **State a rule once.** A rule that appears in several files drifts in all but the one edited; that is this repo's oldest failure. The canonical file owns the rule, everything else links to it by section name.
+- **Where the layers disagree, the platform wins on behaviour and the tool schema wins on the contract.** When the platform source shows a tool *description* is wrong, two things happen, both of them: report it upstream, and record the behaviour the source actually shows, saying in the same breath that the tool text disagrees and citing the date it was checked. Four live examples are load-bearing here — `MAX_CONVERSIONS` is required in an `AUTOMATIC` group though the tool text calls it recommended; a managed group rejects an *unlimited* budget rather than `spending_limit_model: NONE` as such; a REJECTED item **can** be edited, which is how it is resubmitted, though the tool text says it must be recreated; and a CRAWLING item is refused on most accounts though the tool text lists it as fully editable (both checked 2026-11-03). Silently following text we know to be wrong would send users into rejected calls. What is forbidden is inventing a difference, or keeping one after upstream fixes it.
+
+What is genuinely ours, and in no layer above: which tool fits the question, what a write will reach, what a number means for an advertiser, and when the right answer is to do nothing.
+
 ### Stale capability claims are their own bug class
 
 The conversion-rule sync surfaced a failure mode worth naming, because it will recur on the next upstream release. When the MCP gains a tool, the plugin doesn't just *lack* the new capability — it actively **asserts the capability doesn't exist**, in five places at once: the agent's triage table, its tool-existence boundary, the guardrails' out-of-MCP list, the `manage-campaigns` UI-fallback section, and the README scope line. Until all five are updated, the plugin confidently redirects users to the UI for work it can already do, which is worse than silence because it sounds authoritative.
 
-So when syncing, grep for the capability by *name* rather than only diffing the tool list:
+So when syncing, don't only diff the tool list — search the docs for the *claim*. The command below collects the phrasings this repo has used for "that isn't available". It is a net, not a proof — a new wording slips through it, so add the wording to the pattern when you invent one. Every hit is a sentence that may have just become false.
 
 ```bash
-grep -rniE 'conversion-rule creation|UI-only|does not expose|no MCP tool' --include='*.md' .
+grep -rniE 'conversion-rule creation|UI-only|does not expose|does ?n.t yet expose|not yet on the public|no MCP tool|does not surface|not surfaced|Realize does not (show|display)|not wired|not enabled here|does not wire|no tool at any level|isn.t an MCP capability|not exposed by MCP|does not currently expose|Realize cannot|chose not to wire|not possible through the MCP|not exposed via|not an MCP capability|no API path|this revision' --include='*.md' .
 ```
+
+**The campaign-group release added a second shape of this bug: *exists upstream, deliberately not wired here*.** That is not a stale claim — it is a standing choice — but it decays into one the same way, because the natural shorthand for it is "Realize can't do that", which is false. Three states have to stay distinct **in the maintainer docs**: **wired**; **on the MCP but not used here** (today `create_audience` / `update_audience`, wired in their own change, and the deprecated `search_conversion_rules` alias); and **in the Realize API with no MCP tool** (moving or detaching a campaign between groups — the shared-budget endpoint does both, verified 2026-10-26, so "no API anywhere" is the wrong thing to say about it). Collapsing the middle one into either neighbour is the failure to watch for. **To the user all three sound the same** — "I don't do that here" plus the screen — so this taxonomy is for our sync work, never for an answer.
+
+**And the middle state is the one that goes stale fastest, because a plugin decision can move a tool out of it between one PR and the next.** `create_campaign_group` / `update_campaign_group` sat in it for exactly one review cycle before being wired, and the first attempt at wiring them updated the agent's boundary paragraph and left nine other files still saying they were disabled — including a contradiction inside the agent file itself. **When a capability changes state, the grep below is not optional and not a spot check: run it, and read every hit.** Count lines (`N read tools + M write tools`) do not contain any of the grep's phrases, so check those by hand in the same pass — the agent file, `.claude/CLAUDE.md`'s own diagram, and `docs/realize-best-practices-gap.md` each carry one, and they must agree.
 
 Also check for a **deprecation** alongside the addition — this release renamed `search_conversion_rules` to `get_conversion_rules` with a hard removal date, and the old name appeared in seven files — two knowledge topics, the `discovery` skill, the agent's Tool Reference, the write-surface reference, this file's own architecture diagram, and `docs/realize-best-practices-gap.md`. A rename is a breaking change on a timer; note the date in the changelog.
 
