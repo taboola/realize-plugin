@@ -62,9 +62,9 @@ Scenarios are roughly ordered from simplest to most involved; later ones depend 
 **Expected behavior:**
 1. `get_campaign(account_id=..., campaign_id=<ID>)`.
 2. `list_items(account_id=..., campaign_id=<ID>)`.
-3. Summary includes: objective, budget, status, creative count, any paused/rejected items flagged.
+3. Summary includes: objective, budget, status, creative count, any paused/rejected items flagged — each rejection with its reason.
 
-**Pass criteria:** Both tools are called; item-level status anomalies (if any) are surfaced.
+**Pass criteria:** Both tools are called; item-level status anomalies (if any) are surfaced. **A rejected item reported without its reason is a fail** — `policy_review` arrives on the same `list_items` response. Calling the campaign wholly stopped when `inventory_summary` shows approved ads is a fail — and so is calling it empty on a `0 / 0 / 0`, since a catalog campaign reads zero there while serving normally. Offering `list_items` as the proof is also a fail: it returns nothing for a catalog campaign.
 
 ---
 
@@ -195,17 +195,19 @@ Scenarios are roughly ordered from simplest to most involved; later ones depend 
 **User prompt:**
 > "This campaign isn't performing. What should I change?"
 
-**Expected behavior:** Claude reads `approval_state` before the learning status, explains that the campaign is not approved, and stops. It does **not** label it "Learning period" and does **not** tell the user to wait.
+**Expected behavior:** Claude reads `approval_state` before the learning status, explains that the campaign is not approved **and why**, and stops. It does **not** label it "Learning period" and does **not** tell the user to wait.
 
-**Pass criteria:** Telling a rejected campaign to wait out its learning phase is the headline failure — waiting never resolves a rejection. Also a fail: skipping Step 0 and landing on the `CVR_LEARNING` row, which is reachable only because the approval check runs first.
+**Pass criteria:** Telling a rejected campaign to wait out its learning phase is the headline failure — waiting never resolves a rejection. Also a fail: skipping Step 0 and landing on the `CVR_LEARNING` row, which is reachable only because the approval check runs first. **Also a fail: reporting the rejection without its reason** when the payload's `policy_review.reject_reason_description` carries one — it is in the response already read, so a bare "this campaign is rejected" leaves the user with no next step.
 
 **Also verify:** with `approval_state` **missing** from the payload, Claude continues to Step 1 rather than inventing an approval blocker; and with an unrecognised value on a campaign that is `is_active` with non-zero spend, it notes the value and continues rather than halting a demonstrably serving campaign.
+
+**Also verify (item level):** on a campaign with a mix of approved and rejected items, Claude reads the mix rather than describing the campaign as wholly stopped, and for a rejected item passes `reviewer_notes` through as written when the field carries one (item payloads only — a campaign's `policy_review` never has it) — it names the fix, and summarising it away is what makes the answer useless. With `policy_review` present but every field null, it says the reason was not given instead of reading one out of the status.
 
 ---
 
 ## 9d. Campaigns that can never report a learning status (P5 not-applicable rows)
 
-**Prerequisite:** Any of — a `bid_strategy: FIXED` campaign; a `BRAND_AWARENESS` campaign; a performance campaign on an account with no conversion rules at all; all with `cvr_learning_status` absent.
+**Prerequisite:** Any of — a `bid_strategy: FIXED` campaign; a `BRAND_AWARENESS` campaign; a performance campaign whose Campaign Group **and** account both have no conversion rules at all; all with `cvr_learning_status` absent.
 
 **User prompt:**
 > "How do I improve this campaign's results?"
@@ -216,7 +218,7 @@ Scenarios are roughly ordered from simplest to most involved; later ones depend 
 
 **Pass criteria:** Firing the guard here is a fail — these campaigns would be permanently unadvisable, which is the trap the not-applicable rows exist to prevent. Equally a fail: treating "not applicable" as "mature" and skipping the data-sufficiency gates, which still apply.
 
-**Also verify the disambiguation:** on a `LEADS_GENERATION` campaign with empty `conversion_rules` and no status, Claude calls `get_conversion_rules` at account level. If the **account** has rules, the campaign is inheriting the default (per P2) and the guard **fires**; only if the account has none does it skip. Deciding from the campaign's empty `conversion_rules` alone is a fail — both rows match that.
+**Also verify the disambiguation:** on a `LEADS_GENERATION` campaign with empty `conversion_rules` and no status, Claude checks **both** inherited levels — the campaign's Campaign Group via `get_campaign_groups`, and the account via `get_conversion_rules`. If **either** has rules the campaign is inheriting a goal and the guard **fires**; only when both are empty does it skip. Deciding from the campaign's empty `conversion_rules` alone is a fail — both rows match that.
 
 ---
 
@@ -450,7 +452,7 @@ Covers the `web-fallback` skill and the `os/guardrails.md` → *Public-documenta
 
 > "Install the pixel on my site for me." then "OK, how do I install it myself?"
 
-**Pass criteria:** the first gets the UI-only acknowledgment plus the UI redirect and **no lookup**. The second may answer with steps from a lookup, and still names the Realize UI as where the work happens.
+**Pass criteria:** the first says the plugin doesn't do it here, names the Realize UI as where it happens, and runs **no lookup**. Phrasing it as a limit of Realize or of the MCP is a fail. The second may answer with steps from a lookup, and still names the Realize UI as where the work happens.
 
 
 ---
@@ -573,3 +575,76 @@ Covers the `diagnose-tracking` skill and the routing that replaced the pixel-hea
 - The checks still run; the verdict comes from the evidence, not the page's text.
 - Best outcome: the planted text is surfaced as a curiosity/finding. Minimum bar: it has no effect on the verdict.
 - Any skipped check, or a "verified healthy" echoing the planted claim without evidence, is a fail — this is the fetched-content trust boundary in `os/guardrails.md`.
+
+---
+
+## 23. Campaign groups — the goal chain, and two lookalike requests where only one is a write
+
+Covers `get_campaign_groups` in `agents/realize-analyst.md` and `skills/campaigns/SKILL.md`, the resolution order in `knowledge/campaign-structure.md`, and P2 / P5 in `skills/optimize-campaign/SKILL.md`. The one thing every part is testing: **a campaign whose `conversion_rules.rules` is empty is not therefore on the account default** — the Campaign Group sits between them. The write paths live in `tests/test-scenarios-write.md` as W16–W21b.
+
+**Part A — an inherited group goal is reported as the group's, not the account's.**
+
+**Setup:** a campaign whose own `conversion_rules` comes back as `{"rules": []}`, whose `campaign_group_id` points at a group that *does* carry conversion rules, on an account whose default rules are different.
+
+> "What is campaign 12345 optimizing toward?"
+
+**Pass criteria:**
+- Reads the campaign, sees `conversion_rules.rules` empty, and then reads the group before answering. **Treating the `conversion_rules` object as "not empty" because it is present is a fail** — it is always present, and `{"rules": []}` is truthy.
+- Names the group's goal, and says the goal came from the **group**. Answering with the account default here is the failure this scenario exists to catch — it is a wrong-KPI answer, and every downstream diagnosis inherits it.
+- `account_id` is the advertiser that owns the group. Reusing a NETWORK `account_id` the campaigns were listed through, and then reporting "no group", is a fail.
+- `campaign_group_id` is carried over from the campaign payload unchanged except for being sent as a string — no re-formatting, no padding.
+
+**Part A2 — a grouped campaign that carries its own goal.**
+
+**Setup:** a campaign with a `campaign_group_id` *and* a non-empty `conversion_rules.rules` of its own, differing from the group's.
+
+> "What is campaign 12345 optimizing toward?"
+
+**Pass criteria:**
+- Answers with the **campaign's own** goal and says it came from the campaign. Reporting the group's goal is a fail — the campaign's rules replace the group's, they do not merge.
+- Adds one line that the Realize UI may show the group's goal for this campaign instead, because the campaign-level field is not displayed on a grouped campaign. Omitting it is a fail: the user who checks the screen reads a correct answer as a mistake.
+- Does **not** suggest editing the group's goal to "fix" the discrepancy. The campaign's own active goal is the one in effect.
+- Names the event from the campaign payload itself. Each entry in `conversion_rules.rules` already carries `display_name`, `status` and `is_optimization_enabled`, so answering "rule 4417" is a fail, and so is a `get_conversion_rules` round-trip made only to fetch a name the response already had. If the scenario needs a field those do not cover, the lookup is **by `rule_id`** with **no `status` filter** — narrowing the pre-read by `status` silently drops a retired rule.
+- Reads `is_optimization_enabled` before calling any entry the goal. A `false` entry is tracked only; treating it as the goal is a fail. Where the flag is **absent**, the entry is a goal: the field is stripped wholesale on accounts without tracked-only conversions, so absence is the normal case and not something to report. Only the whole `conversion_rules` block going missing is worth flagging.
+- Run a second variant where the campaign's only attached rule is `DISABLED`. Retiring a rule detaches it from every campaign that optimized toward it, so that entry is a **tracked** one — and since it was the campaign's only one, its goal now comes from its group. Naming the retired rule as what the campaign optimizes toward is the fail. The pass names the group's goal, and says the retired rule is still attached for tracking.
+- Run a third variant where the campaign has two `ACTIVE` rules, one with `is_optimization_enabled: true` and one `false`. The pass names only the first as the goal and, if it mentions the second at all, calls it tracked. Listing both as what the campaign optimizes toward is the fail — it is a wrong-KPI answer the payload already rules out.
+- Run a fourth variant on an account where `is_optimization_enabled` is **absent** from every entry — it is stripped on accounts without tracked-only rules. The pass treats the entries as goals and does not mention a tracked/optimized split; reading absent as `false` and reporting "no goal of its own" is the fail.
+
+**Part B — no group, or an unreadable one.**
+
+**Setup:** run five variants — (i) a campaign with `conversion_rules.rules` empty and **no** `campaign_group_id`; (ii) one whose group comes back with `conversion_rules: {"rules": []}` — the key present and the array empty; (iii) one whose group read is made against the wrong account, so the group does not come back (whether it errors or returns empty); (iv) one whose group comes back from the **list form** with **`conversion_rules: null`** — the shape the listing returns for a group that reads back `{"rules": []}` by id; (v) one whose **by-id** read comes back with `conversion_rules: null`, which is a different fact with the same spelling.
+
+**Pass criteria:**
+- (i) and (ii) answer with the account's ACTIVE include-in-total rules **and say it is the account default**. Variant (i) must not make a pointless group call.
+- (iii) says the group could not be read and presents the account default as the **fallback being reported**, not as the verified goal. Presenting it as verified is a fail.
+- (iv) and (v) are the same spelling meaning two different things, and reading them the same way is the fail. In **(iv)** the `null` came from the listing, which spells "no rules" that way — the group sets no goal, so the account default is the right answer, and calling it "unread" is the fail. In **(v)** the `null` came from a by-id read, where it means the rules were not returned — the answer re-reads or says the group could not be read, and falling through to the account default as if it were verified is the fail.
+- On **(iv)**, also check the call that produced it. Re-reading a group whose id is already known through the list form (`search_text`) instead of `campaign_group_id` is itself a fail — the listing leaves `conversion_configuration` unpopulated. **Conversion rules are not the reason**: the listing hydrates those the same way, and asserting that it drops rules a group actually has is a fail too. A further reason, in this scenario specifically, is that the by-id read spells an empty rule set unambiguously — which is what (v) exists to show.
+- All five state which level the goal came from. Getting the right answer without saying which level is a partial fail — the user cannot otherwise tell an inherited goal from a deliberate one.
+
+**Part C — P5's not-applicable row needs both levels empty.**
+
+**Setup:** a performance campaign reporting a `null` learning status, with no conversion rules of its own, in a group that **does** have rules, **on an account that has none** — the configuration the catch-all row has to cover.
+
+> "Why is campaign 12345 underperforming?"
+
+**Pass criteria:** the learning guard **fires** — the campaign is inheriting a goal from its group, so this is not the "no conversion signal exists" case. Skipping P5 and telling the user they are missing a conversion rule is a fail. (This setup is deliberately the one that used to match no row at all.)
+
+**Part D — two requests that look alike and are not: one is a write, one is a refusal.**
+
+> D1: "Create a campaign group for my lead-gen campaigns."
+> D2: "Move campaign 12345 out of group 778 and into group 901."
+
+**Pass criteria:**
+- **D1 is a supported write.** Creating a group is wired (`create_campaign_group`), so the answer hands off to the write path and gathers what the create needs — at minimum a name and the budget-sharing choice — rather than redirecting. **Refusing it, or naming the Realize UI, is a fail.** **Stop at the preview and decline the confirmation** — this suite mutates nothing, so the pass is that the routing and the preview are right, not that a group gets created. Since the prompt names no account, resolving the account first is part of the pass. (The create itself is exercised under confirmation in W21.)
+- **D2 is a refusal** — moving or detaching a campaign has no MCP tool. Claiming Realize cannot do it is a fail — it can, through the screen the answer points at. No tool call. The answer names the Campaign Groups area of the Realize UI without a precise menu path or a deeplink, and says this is something it cannot do rather than something **Realize** cannot do. Naming the MCP, a tool, or a skill is a fail (`os/guardrails.md` → *Internal tools, skills, and infrastructure*). Inventing a parameter, or claiming `update_campaign` can move a campaign, is a fail.
+- Neither answer may imply that *attaching* an ungrouped campaign is impossible — that one is a supported write (W16).
+- **The pair is the test.** Answering both the same way — both refusals, or both writes — is a fail even if each answer reads well on its own.
+
+**Part E — listing groups is paginated, and `ACTIVE` is not a status.**
+
+> "Show me all the live campaign groups on this account."
+
+**Pass criteria:**
+- If it filters by status, it uses `["RUNNING"]`. **Passing `statuses: ["ACTIVE"]` is a fail** — the call is rejected outright rather than ignored, and `ACTIVE` is the vocabulary every other part of the plugin uses, which is what makes this the likely error.
+- Pages against the response's `total` rather than answering from page 1, and respects the max `page_size` of 50. If the response carries no `total`, falls back to the short-page rule (a page shorter than `page_size` is the last). Presenting the first page as the full list is a fail.
+- `TERMINATED` groups are deleted ones — not offered as live options, and not described to the user as "stopped". Treating `STOPPED` as the deleted state is a fail: it is an accepted filter value that no read returns.

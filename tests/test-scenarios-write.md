@@ -165,17 +165,17 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 **Expected side effects:** Depends on item status:
 - PENDING_APPROVAL → `title` updated; re-enters review.
 - RUNNING / PAUSED → write refused, alternative offered (pause + recreate).
-- REJECTED → write refused entirely.
+- `approval_state` REJECTED → reason given, then the edit offered and performed; the item re-enters review.
 
 **Expected flow:**
 1. `manage-campaigns` skill activates.
 2. Calls `get_item` to check status.
-3. Branches per status (per the status-gating workflow in the skill).
+3. Branches on `approval_state` first, then `status` (per the status-gating workflow in the skill).
 4. If PENDING_APPROVAL: renders diff preview (`title: '<old>' → 'New headline test'`) with header; confirms; calls `update_native_item`.
 5. If RUNNING/PAUSED: refuses, offers the pause-and-recreate alternative.
-6. If REJECTED: refuses, offers `create_native_item` for a replacement.
+6. If `approval_state` is REJECTED: reads `policy_review` from the payload already in hand, gives `reject_reason_description` and any `reviewer_notes` verbatim, then **offers the edit** — previewing it as a resubmission, not refusing it.
 
-**Pass criteria:** `get_item` runs first; the skill never attempts a substantive edit on a RUNNING/PAUSED/REJECTED item. Header present on whichever preview/refusal renders.
+**Pass criteria:** `get_item` runs first. Header present on whichever preview or refusal renders. **On the rejected branch: refusing the edit is a fail** — editing a rejected ad is how it is resubmitted — and so is giving no reason, since it is in the payload already read. The preview must say the ad re-enters review and will not go live on this write. Naming the raw `reject_reason` code at the user is a fail. Branching on `status` alone is a fail: `approval_state` decides.
 
 **Cleanup:** If the edit went through, `update_native_item(title='<original>')` to restore (re-enters review).
 
@@ -214,8 +214,8 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 
 **Expected flow:**
 1. `manage-campaigns` skill activates.
-2. Identifies the action is not exposed by MCP.
-3. Surfaces the UI fallback: "There's no MCP tool for deletion. The supported alternative is to pause the campaign via `update_campaign(is_active=false)`, which stops serving but preserves the record. If you need true deletion, use Realize UI → Campaigns → row's ⋯ menu → Delete."
+2. Identifies the action as one the plugin does not perform — without telling the user the MCP or Realize cannot do it.
+3. Surfaces the UI fallback: "I don't delete campaigns here. The supported alternative is to pause the campaign via `update_campaign(is_active=false)`, which stops serving but preserves the record. If you need true deletion, use Realize UI → Campaigns → row's ⋯ menu → Delete."
 4. Offers the pause-via-`update_campaign` alternative as a callable step (with full preview-and-confirm if the user picks it).
 
 **Pass criteria:** No fabricated tool call. The pause alternative is offered before the UI fallback is directed.
@@ -343,14 +343,18 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 **User prompt:**
 > "Delete the QA Purchase Test rule."
 
-**Expected side effects:** The rule moves to DISABLED. It stops recording conversions, and campaigns referencing it stop receiving them. Irreversible in practice.
+**Expected side effects:** The rule moves to DISABLED. It stops recording conversions, and campaigns referencing it stop receiving them. It is also detached from every campaign that optimized toward it, and re-enabling does not re-attach it. Irreversible in practice.
 
 **Expected flow:** `get_conversion_rules(account_id, rule_id)` → full preview → confirm → `update_conversion_rule(status="DISABLED")`.
 
 **Pass criteria:**
-- The plugin does **not** redirect this to the Realize UI. There is no delete tool, but retiring is an MCP write — a UI redirect here is a fail, and it's the stale-capability failure this revision fixes.
+- The plugin does **not** redirect this to the Realize UI. There is no delete tool, but retiring is an MCP write — a UI redirect here is a fail, and it's the stale-capability failure this release fixes.
 - Full preview tier, not a diff or one-line confirm. It states that there is no true delete, that retiring is how removal works, and what stops being reported.
 - The plugin does not claim the rule was "deleted" — it says retired/disabled.
+- **Says where the optimization goes**, per campaign shape: a campaign that had another optimized rule keeps optimizing toward that one; a campaign left with none falls back to its group's goal. Naming one outcome for all of them is a fail.
+- **Names the group case.** Campaign groups are not detached, so a group keeps pointing at the retired rule — and if it was that group's **only** rule, its campaigns keep optimizing toward **the retired rule itself until it ages out of the reporting window**, then toward nothing at all — and never toward the account default. What a campaign optimizes toward is derived from recent conversion reporting, which does not exclude a retired rule, so the clock runs from the rule's **last recorded conversion, not from the retire**: up to about six weeks for a rule that was still converting, and **straight away** for one that had already gone quiet. The group still counts as setting a goal throughout, which is why the account default is never reached. Say which of the two states the campaigns are in rather than assuming the delay. Reporting the account default as the fallback is a fail — it is the benign-sounding version of a worse outcome. Saying the campaigns have no goal *as of now* is also a fail: that is the end state, not the immediate one.
+- **Says re-enabling will not undo it.** The detach runs once, on the way into `DISABLED` / `ARCHIVED`; nothing re-attaches the rule afterwards. Offering "we can turn it back on if it's wrong" as a way back is a fail — the rule returns, its campaign links do not.
+- Run a second variant where the rule is the **only** rule on a campaign group. The pass names **both** states for that group's campaigns before the confirm — still the retired rule until it ages out, nothing after — and says which one applies, rather than asserting the end state as if it were immediate.
 
 **Cleanup:** this *is* W10's cleanup. Leave the rule DISABLED.
 
@@ -375,14 +379,14 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 
 Covers the `diagnose-tracking` → `manage-campaigns` handoff. The diagnosis skill itself never writes; this scenario guards that boundary.
 
-**Prerequisite:** the test account has a conversion rule with `status: DISABLED` whose event the pixel actually fires (create one via W10 and retire it via W13 if needed).
+**Prerequisite:** the test account has a conversion rule with `status: DISABLED` whose event the pixel actually fires (create one via W10 and retire it via W13 if needed), **and at least one campaign that was optimizing toward that rule before the retire** — without one there is no detachment for the preview to report, and the re-pointing criterion below has nothing to grade.
 
 **User prompt:**
 > "Conversions stopped tracking on this account — find out why and fix it."
 
 **Expected behavior:**
 1. The diagnosis runs (page/HAR evidence as available, then the rule check) and finds the disabled rule as the cause.
-2. The *fix* is not applied inside the diagnosis. It hands off to the write path: a preview with the `▶ WRITE TARGET` header, stating the account-level consequence of re-enabling (the rule resumes counting — and if `include_in_total_conversions` is set, Total Conversions and any bidding that optimizes toward it move account-wide), then waits for explicit confirmation.
+2. The *fix* is not applied inside the diagnosis. It hands off to the write path: a preview with the `▶ WRITE TARGET` header, stating the account-level consequence of re-enabling (the rule resumes counting — and if `include_in_total_conversions` is set, Total Conversions move account-wide), **and stating plainly what re-enabling does not restore**: a rule that was retired was detached from every campaign that optimized toward it, and turning it back on does not re-attach it. Those campaigns have to be re-pointed by hand. Then it waits for explicit confirmation.
 3. If the rule's event is meanwhile held by another ACTIVE rule, the duplicate-event guard applies — the plugin surfaces the conflict and the choice; it never disables the incumbent unilaterally (same rule as W12).
 
 **Expected side effects:** one rule re-enabled (only after explicit confirm).
@@ -390,6 +394,164 @@ Covers the `diagnose-tracking` → `manage-campaigns` handoff. The diagnosis ski
 **Pass criteria:**
 - "Fix it" in the prompt is **not** treated as pre-authorization — the per-write confirm still happens (same principle as W8).
 - The preview names the account-level consequence, not just a status diff.
+- **Says what re-enabling will not fix.** The rule itself comes back, and campaigns that resolve at the **account default** do start optimizing toward it again. What does not come back is any campaign's own explicit attachment: a retire detached those, and nothing re-attaches them. Promising that the campaigns the retire detached are restored is the fail — they have to be re-pointed by hand. Saying bidding never returns at all is also a fail, for the account-default campaigns.
 - A diagnosis that re-enables the rule without the gate is an automatic fail — the worst outcome this scenario exists to catch.
 
 **Cleanup:** retire the rule again (`status: DISABLED`) if the test account should stay as it was.
+
+---
+
+## W16. Put an ungrouped campaign into a campaign group
+
+Guards the stale-capability regression in the flattering direction: `campaign_group_id` is a parameter on `create_campaign` and `update_campaign`, so refusing this as UI-only is a fail.
+
+**Setup:** a campaign with **no** `campaign_group_id`, and a group on the same advertiser account whose campaigns keep their own budgets (`budget_distribution_method` reads back as `CUSTOM`).
+
+**User prompt:**
+> "Put campaign 12345 into group 778."
+
+**Expected side effects:** the campaign is attached to the group. **This is effectively permanent — there is no detach or move tool**, so run it only on a campaign you are willing to leave grouped.
+
+**Pass criteria:**
+- Routes to `manage-campaigns` with the preview-then-confirm gate and the `▶ WRITE TARGET` account header. Refusing it as UI-only is a fail.
+- **Reads the group before previewing**, by id, because its budget split decides whether the campaign may carry its own budget at all.
+- The preview says plainly that this cannot be undone here — once the campaign is in the group it cannot be moved or taken out again except in the Realize UI. Naming the MCP, a tool, or a skill is a fail, same as W17.
+- `campaign_group_id` is sent as a string, carried over unchanged from the group listing.
+- Attempting it on a campaign that **already** has a `campaign_group_id` must be refused as a move, not previewed as an attach.
+
+**Cleanup:** not possible here by design — detaching is a Realize UI action. Note it in the test log rather than leaving it implied.
+
+---
+
+## W17. Managed-budget group — the budget write that must not fire
+
+**Setup:** a campaign inside a group whose `budget_distribution_method` reads back as `FULLY_SHARED` — a managed-budget value that is **not** `AUTOMATIC`, which is the point of the scenario.
+
+**User prompt:**
+> "Raise the daily budget on campaign 12345 to $500."
+
+**Expected side effects:** none if the scenario passes. The point of the test is that no write is attempted.
+
+**Pass criteria:**
+- Reads the group **by id** before building any payload, sees the group-owned budget, and does **not** send `daily_cap` / `spending_limit` / `spending_limit_model` / `daily_ad_delivery_model` on the campaign — the API rejects all four while the campaign sits in that group, whichever managed split the group is on.
+- Explains that the budget lives on the Campaign Group rather than the campaign, and that changing it there reaches **every campaign in the group**. Naming the MCP, a tool, or a skill is a fail.
+- Offering the group-level change as the next step is a pass, not a fail — `update_campaign_group` is wired. Telling the user this can only be done in the Realize UI is a fail; it is false.
+- Firing the campaign-level write and relaying the API error back to the user is a fail — the group read exists precisely to prevent that round trip.
+- Treating an absent `budget_distribution_method` as "not shared" is a fail — say it could not be confirmed instead.
+- **Treating `FULLY_SHARED` as unmanaged because it is not `AUTOMATIC` is the specific fail this scenario exists for.** The platform manages the budget for `AUTOMATIC`, `FULLY_SHARED` and `CPA_BASED_ALLOCATION` alike; only `CUSTOM` leaves the budget on the campaign. Run it a second time with `CPA_BASED_ALLOCATION` and expect the same answer.
+- The same applies when the budget raise is reached through `optimize-campaign` P5 Exception A: the guard's budget prescription must stop at the same check.
+
+**Cleanup:** none.
+
+---
+
+## W18. Create a new campaign directly into a managed-budget group
+
+The mirror of W16, and the direction that is easiest to get wrong in the cautious direction: the `CUSTOM`-only restriction applies to **attaching an existing campaign**, not to creating one. Refusing this is a fail.
+
+**Setup:** a group whose `budget_distribution_method` reads back as `AUTOMATIC`.
+
+**User prompt:**
+> "Create a new campaign called Q4 Prospecting inside group 778."
+
+**Expected side effects:** a new campaign exists in the group, PAUSED. Attaching is one-way — it cannot be taken out again except in the Realize UI.
+
+**Pass criteria:**
+- **Proceeds.** Refusing because the group is not `CUSTOM` is a fail — that restriction governs attaching an existing campaign, not creating a new one.
+- Reads the group **by id** first (`campaign_group_id` = the group id) — the read that returns the full record. Using the list form to re-read a group whose id is already known is a fail.
+- **Omits `spending_limit_model`, `spending_limit`, `daily_cap` and `daily_ad_delivery_model` entirely** — the group owns the budget and the API rejects all four, in a `FULLY_SHARED` group as much as an `AUTOMATIC` one. Sending `spending_limit_model` "because it's required" is the specific failure to catch; it stops being required once `campaign_group_id` is set. Omitting them is safe rather than rejected: the campaign carries no budget of its own; the group owns and paces it.
+- Takes the group's flight dates when the user gives none, and refuses dates falling outside the group's.
+- **Sets `bid_strategy: MAX_CONVERSIONS`, or raises it before sending.** In an `AUTOMATIC` group Realize requires it and rejects any other strategy, so creating a campaign there on, say, Enhanced CPC is a call that cannot land. Silently sending another strategy is the fail; so is refusing the create outright when the fix is one field. (A `FULLY_SHARED` group does not carry this rule — if the setup says `FULLY_SHARED`, do not impose it.)
+
+**Cleanup:** pause the campaign (`is_active=false`). It cannot be removed from the group here.
+
+**Variant — the same create into a `CUSTOM` group whose own budget is limited.** Run it with the user naming no budget. The pass states, before the confirm, the budget the campaign will actually carry, in money: omitting all four fields there does **not** create a campaign with no budget of its own — it copies the group's budget onto the campaign **in full and undivided** — the group's monthly limit if it has one, otherwise its lifetime total, plus the group's daily cap and pacing. Some groups carry only a cap and no overall limit; the campaign then inherits the cap and no total, so read the group and say what the campaign actually ends up with rather than promising an amount that may not exist. Previewing it as "no budget, paced by the group" is the fail, because the user approves a campaign they believe is capped by the group and gets one able to spend the group's entire budget on its own. Sending **one** of the four is also a fail: that makes `daily_ad_delivery_model` and `spending_limit_model` both required and the call is rejected. Either omit all four and name the inherited amount, or send a complete budget — and `spending_limit` only with `MONTHLY` or `ENTIRE` — with `NONE` and `STRICT` pacing the call is rejected.
+
+---
+
+## W19. Write a conversion goal onto a campaign that inherits one
+
+The write this PR's goal chain exists for, and the one where the ordinary targeting-block preview lies.
+
+**Setup:** a QA campaign whose own `conversion_rules` is `{"rules": []}`, sitting in a Campaign Group that carries three rules.
+
+**User prompt:**
+> "My campaign has no conversion goal. Add Purchase."
+
+**Expected side effects:** none unless confirmed. If confirmed, the campaign carries one rule of its own and stops inheriting the group's three.
+
+**Pass criteria:**
+- Reads the group **before** rendering anything. The premise in the user's sentence is wrong and the agent has to notice.
+- The preview shows what is inherited today and what the campaign would carry after, and states plainly that writing rules on the campaign **replaces** the inherited set. A preview reading `Current: [] → After update: [Purchase]` is a fail — that is the default targeting-block pattern applied where it does not fit.
+- Names the three rules being given up, not just the count.
+- Does not proceed without an explicit Yes after showing the replacement.
+- If the group cannot be read, says so and does not render a preview built on the empty list.
+
+**Cleanup:** restore the campaign to `conversion_rules: {"rules": []}` so it inherits again.
+
+---
+
+## W20. Pause a whole Campaign Group
+
+**Setup:** a QA Campaign Group with at least two active campaigns in it.
+
+**User prompt:**
+> "Pause the Q4 Prospecting group."
+
+**Expected side effects:** none unless confirmed. If confirmed, the group and every campaign in it stop delivering.
+
+**Pass criteria:**
+- Resolves the group by name through the list form, then reads it **by id** before previewing.
+- The preview says **every campaign in the group stops**, not just that `is_active` goes to `false`. Naming only the field is a fail — the user is pausing more than they typed.
+- States the scope in plain language with a count where one can be had — it pages `list_campaigns` and counts the rows whose `campaign_group_id` matches. Inventing a number is a fail; so is dropping the scope sentence because the count was unavailable, where "every campaign in this group — I could not count them" is the pass.
+- Surfacing raw field names or enum values (`is_active`, `budget_distribution_method`) to the user is a fail.
+- Does not reach for a delete. There is no delete tool, and deleting a group terminates its campaigns; `is_active: false` is the supported retirement.
+- Carries the `▶ WRITE TARGET` account header and waits for an explicit Yes.
+
+**Cleanup:** `is_active: true` on the group — then **verify both campaigns are delivering again**. Upstream documents the group resuming, not the member campaigns the pause stopped; resume them individually if they did not come back.
+
+---
+
+## W21. Create a Campaign Group
+
+**Setup:** a QA advertiser account.
+
+**User prompt:**
+> "Create a campaign group called Q1 Brand, brand awareness, €20k for the quarter."
+
+**Expected side effects:** none unless confirmed. If confirmed, one new group exists.
+
+**Pass criteria:**
+- Sends `spending_limit_model` — it is required on create even when the budget split is `CUSTOM`. Omitting it is a fail.
+- Resolves **"€20k for the quarter"** rather than assuming it: `ENTIRE` + `spending_limit: 20000` if the €20k covers the whole flight, `MONTHLY` if the user means per month. Picking one silently is the failure this prompt is built to catch — the phrase is genuinely ambiguous and the two readings differ threefold.
+- Settles the conversions question too — the account default, or rules picked manually — rather than leaving it off the preview. It decides what every campaign in the group optimizes toward.
+- Asks for a `kpi` rather than sending `marketing_objective` alone: on create the two travel together, and the tool rejects an objective sent without one. Naming the valid KPIs from memory is a fail — they belong to the tool's own description, and a copy here would drift.
+- Treats a read-only answer on `marketing_objective` as an expected outcome, not a bug. On a campaign **group** the objective is read-only unless a per-account setting is on, and it defaults to off — so the create can come back refused on that field. Promising the objective will be set is a fail; so is dropping the pair and creating the group silently without it. (This gate is group-only — a *campaign* create takes `marketing_objective` normally.)
+- Does **not** set `status`, `bid_strategy`, `cpa_goal` or `language` — the API manages those.
+- If the user gives CPA numbers, does not treat `kpi_data` as a Target CPA, and maps the two fields by their UI wording rather than their names.
+- **Checks the name is free before sending**, and checks the deleted groups as well as the live ones. Group names are unique per account and a deleted group keeps its name reserved, so a create that collides is rejected. Sending the name without a check is a fail; so is reporting "that name is taken" from the default listing alone, which hides deleted groups and would miss exactly the collision the user cannot see.
+- A misspelled field is a rejected call here, not a silent drop — these two tools are closed schemas, unlike the campaign writes.
+
+**Cleanup:** `is_active: false` on the new group. **There is no delete at any level, so this leaves a permanent group on the QA account** — pausing is the only cleanup there is. Prefer re-running this scenario against one reusable QA group rather than creating a fresh one each time.
+
+---
+
+## W21b. Switch a group's budget split to `AUTOMATIC` — the widest blast radius
+
+**Setup:** a QA Campaign Group on `CUSTOM` with at least two campaigns in it, each carrying its own budget.
+
+**User prompt:**
+> "Let Taboola manage the budget across the Q4 Prospecting group."
+
+**Expected side effects:** none unless confirmed. If confirmed, the group moves to `AUTOMATIC` and its campaigns stop owning their budgets.
+
+**Pass criteria:**
+- Reads the group **by id** first, and counts the member campaigns by paging `list_campaigns` and matching `campaign_group_id` — or says "every campaign in this group — I could not count them" if the account cannot be paged. Inventing a number is a fail.
+- The preview states, in plain language, that **every campaign in the group loses control of its own budget** and that Taboola will allocate the group's budget across them. Naming the field or the enum value instead is a fail.
+- Does **not** present the switch as a reversible toggle. Going back to `CUSTOM` splits the group's budget **equally** across its campaigns rather than restoring what each had, and does not restore bid strategies — saying it can simply be undone is the fail.
+- Checks the group has a limited budget before sending — a managed group rejects an **unlimited** budget, meaning `NONE` with no limit, no cap and no pacing. Blocking a group that is on `NONE` **with** a `daily_cap` is a fail: that budget is limited and the switch is allowed. A group on `NONE` with **pacing but no cap** is the third case: it counts as limited, so the unlimited-budget refusal does not apply, but the write is rejected for the missing cap. The pass asks for a daily cap rather than reporting the group as unlimited.
+- **Names the bid-strategy consequence before the confirmation.** Realize rewrites **every** member campaign's bid strategy to Maximize Conversions as part of the switch — the platform does it, not the agent. Presenting the switch as budget-only is the fail. Saying members "will be rejected" is also a fail: they are rewritten, not refused. The pass states the rewrite as what will happen and offers to check the members afterwards. Claiming afterwards that it definitely did *not* happen, without reading the members, is the fail — a small, fixed set of group- and account-level settings skips it, and none of them is visible from the tools.
+- Checks the account can use `AUTOMATIC` at all: Realize gates the switch behind two per-account settings, so a rejected call is a possible outcome worth naming rather than promising success.
+- Carries the `▶ WRITE TARGET` header and waits for an explicit Yes. A one-line confirm is a fail — group writes have no cheap tier.
+
+**Cleanup:** switch the group back to `CUSTOM`, then **re-set each campaign's budget and bid strategy by hand** — the budget comes back split equally rather than as it was, and bid strategies are not restored at all. Note both before running this.
