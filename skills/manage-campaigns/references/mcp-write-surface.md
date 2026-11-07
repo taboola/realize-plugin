@@ -326,7 +326,7 @@ create_campaign(
   marketing_objective="ONLINE_PURCHASES",
   branding_text="<brand>",
   spending_limit_model="NONE",            # enum: NONE | MONTHLY | ENTIRE — daily cap uses NONE + daily_cap below
-  daily_cap=<daily_cap_currency>,         # ≥ 10× CPA goal
+  daily_cap=<daily_cap_currency>,         # 10–15× CPA goal at setup, ≥ 10× once stable
   daily_ad_delivery_model="STRICT",       # required when daily_cap is set
   bid_strategy="MAX_CONVERSIONS",
   pricing_model="CPC",
@@ -336,15 +336,15 @@ create_campaign(
 )
 ```
 
-### Target CPA campaign
+### Target CPA campaign (switching an existing campaign; a new one starts on Maximize Conversions)
 
 ```
 create_campaign(
   ...,
   bid_strategy="TARGET_CPA",
-  cpa_goal=<currency>,                    # within 10-20% of stable actual CPA (see knowledge/bidding.md)
+  cpa_goal=<currency>,                    # ~20% above the stable actual CPA measured during Maximize Conversions, then step down (see knowledge/bidding.md)
   spending_limit_model="NONE",            # daily cap uses NONE + daily_cap (same pattern as MAX_CONVERSIONS above)
-  daily_cap=<≥ 10× cpa_goal>,             # 10× CPA goal/day — same floor as MAX_CONVERSIONS
+  daily_cap=<10–15× cpa_goal>,            # 10–15×/day at setup, ≥ 10× once stable — same floor as MAX_CONVERSIONS
   daily_ad_delivery_model="STRICT",       # required when daily_cap is set
   is_active=False,
 )
@@ -448,7 +448,7 @@ update_campaign(
 | File | Purpose |
 |---|---|
 | `knowledge/bidding.md` | Bid strategy mechanics, Bid Levers matrix (canonical), Learning-Period Guard, KPI → objective mapping. |
-| `knowledge/budget.md` | 10× CPA rule, pacing, scaling, depletion-miss investigation. |
+| `knowledge/budget.md` | 10–15× CPA rule, pacing, scaling, depletion-miss investigation. |
 | `knowledge/campaign-structure.md` | Native vs Display lock-in (two-path), platform/device splits, Campaign Groups, Realize+ context. |
 | `knowledge/creative.md` | Sponsored Content + Display creative strategy, Gen AI AdMaker, landing pages, creative review, testing, fatigue. (Display item payload shape — `ad_tag` 3P vs `asset_url` + `dimensions` 1P — lives in `knowledge/targeting.md`. Wilson-score creative ranking lives in `skills/optimize-campaign/references/optimization-flow.md` §3.) |
 | `knowledge/targeting.md` | Marketplace vs account-resident audiences, Tier-1 markets, 6-dimension narrow-targeting diagnostic, small-market caveat. |

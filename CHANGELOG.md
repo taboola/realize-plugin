@@ -9,14 +9,15 @@ All notable changes to this plugin will be documented here. Format loosely follo
 - **Codex subtitle shortened** to "Manage Realize campaigns" to fit OpenAI's 30-character `shortDescription` limit.
 - **OpenAI submission branch.** The OpenAI zip is built from `openai-submission`. That branch differs from `main` only in `.mcp.json`, which drops the `X-Realize-Client` header and the `oauth.callbackPort` entry because OpenAI configures OAuth in its portal. `main` keeps both, since the Claude Code install and the Anthropic directory need them. Traffic from the OpenAI build therefore carries no `X-Realize-Client` attribution.
 
-## [0.5.7] — Unreleased
+## [0.5.6] — Unreleased
 
 ### Target CPA timing and budget multiple
-- **Target CPA waits for 50 conversions over a 7-day period**, not 3-4 days. Elapsed days alone are not the test: a low-volume campaign can run for days without enough data. On a new campaign, the plugin offers Maximize Conversions, not Target CPA. Updated in `knowledge/bidding.md` and the Target CPA lines in `optimize-campaign`.
-- **The first Target CPA starts ~20% above** the average CPA over that window (was "within 10-20% of stable CPA" or "at or near current CPA"), using post-click CPA only. The worked example in `knowledge/bidding.md` now starts at ~$31 for a $26 actual CPA.
+- **Target CPA waits for Realize's own eligibility check**, not 3-4 days. Over the trailing 7 days the campaign needs >$1,000 USD spend, >50 click-through conversions, spend on more than 4 of those days, and a steady daily CPA. Stated as the platform defaults they are: tunable server-side, and they decide when Realize *suggests* the strategy, not whether it can be used. `knowledge/tracking.md` already said the 50-conversion threshold is a best practice rather than a limit, and the first draft of this change contradicted it. On a new campaign the plugin offers Maximize Conversions, not Target CPA.
+- **The first Target CPA comes from the platform when the platform has one.** `get_campaign` returns a `target_cpa` block whose `recommended_target_cpa` is Realize's own recommendation for that campaign, with `min_range` / `max_range` bounds — distinct from `cpa_goal`, which is the advertiser's writable setting. The plugin had never mentioned it. It is only populated after the eligibility check passes, so the fallback stays: **~20% above** the last 7 days' average post-click CPA (was "within 10-20% of stable CPA" or "at or near current CPA"), post-click only. The worked example in `knowledge/bidding.md` starts at ~$31 for a $26 actual CPA.
+- **The budget multiples are labelled as published guidance, not a platform rule.** Nothing server-side validates daily budget against CPA for Maximize Conversions, so a campaign under the multiple is accepted and runs; the plugin advises rather than reporting an error.
 - **Maximize Conversions daily budget is 10-15× the CPA goal at setup**, with 10× as the minimum once the campaign has stabilised. $50 minimum when CPA is under $5 is unchanged. Updated in `knowledge/budget.md`, `knowledge/bidding.md`, `knowledge/manifest.json` and the two budget examples in `os/guardrails.md`.
-- The `manage-campaigns` budget table still says 10×; it changes in a follow-up once the open `manage-campaigns` work lands.
-- Version 0.5.7 in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` and `.mcp.json`.
+- **`manage-campaigns` now carries the same numbers.** Its budget-minimums table, the two `create_campaign` payload sketches in the write-surface reference and its knowledge-file pointer all said 10× and "within 10-20% of stable actual CPA", so the plugin answered the same question two ways depending on which file the agent had open. Review feedback on this PR; the follow-up it was deferred to is no longer needed.
+- Version 0.5.6 in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` and `.mcp.json`.
 
 ## [0.5.5] — Unreleased (pending directory review)
 

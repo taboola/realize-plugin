@@ -21,6 +21,8 @@ For campaigns using **Maximize Conversions**, the daily budget must be:
 
 If 10-15× isn't feasible upfront, start smaller and increase once enough data is collected to evaluate trends. Once the campaign has stabilised, **10× CPA is the minimum**.
 
+**These multiples are Taboola's published planning guidance, not a server-side rule.** Nothing in the platform validates daily budget against CPA for Maximize Conversions, and a campaign budgeted below the multiple is accepted and simply runs there — so a budget under the multiple is never a *platform* rejection and must not be reported as one. The plugin's own pre-submit check in `manage-campaigns` is a separate and deliberate guardrail — it still holds the user to the minimum before submitting; it just isn't the server talking (platform source, checked 2026-11-07).
+
 ### Budget by Bidding Strategy
 
 | Strategy | Daily Budget | Monthly Budget |
@@ -121,7 +123,7 @@ Short-burst campaigns typically run **2-10 days** for promotions, launches, or t
 |---|---|
 | 2-3 days | Lifetime budget + Pace Ahead + broad targeting. Very short — focus on spend delivery over optimisation. (Pace Ahead is set in the Realize UI; this plugin cannot adjust it.) |
 | 4-7 days | Enhanced CPC with competitive bid + lifetime budget + broad targeting. |
-| > 7 days | Maximize Conversions if audience is large and budget meets the 10× rule. Use lifetime budget. Allows MaC learning to compound over the flight. |
+| > 7 days | Maximize Conversions if audience is large and budget meets the 10× floor. Use lifetime budget. Allows MaC learning to compound over the flight. |
 
 ---
 
@@ -164,7 +166,7 @@ This rule applies to budget post-mortems, A / B tests with different arm budgets
 ## Pro Tips
 
 - For Enhanced CPC campaigns, budget math is different: daily = 5× CPA goal, monthly = 150× CPA goal.
-- The 10× rule is **per campaign** — if you have 3 campaigns in a group, total group budget should be 3× the 10× requirement.
+- The 10–15× rule is **per campaign** — if you have 3 campaigns in a group, total group budget should be 3× the per-campaign requirement.
 - Budget-depletion issues with Maximize Conversions are almost never a bidding problem — the strategy is designed to spend the full budget. Check targeting, creatives, and supply first.
 - For seasonal campaigns, plan the budget curve: ramp up 3-5 days before the event, peak during, scale down after.
 - Pace Ahead is a powerful but underused feature for campaigns that need to accelerate delivery. **Note:** Pace Ahead is **not something this plugin does** — it is set in the Realize UI after campaign creation. `create_campaign` / `update_campaign` cannot touch it, so if a user asks for it, decline the write and point them at the screen.
