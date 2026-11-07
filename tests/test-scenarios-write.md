@@ -560,7 +560,7 @@ The write this PR's goal chain exists for, and the one where the ordinary target
 
 ## W22. Pause a list that includes a campaign that can't be paused
 
-**Prerequisite:** the test account has three campaigns: one running, one whose status is Rejected, and one in a campaign group that was terminated (its own status is not Rejected or Terminated). If one is missing, run the scenario with the campaigns you have and note which case went untested.
+**Prerequisite:** the test account has three campaigns: one running, one whose status is Rejected, and one in a campaign group that was terminated (its own state will usually be Terminated as well — deleting the group does that, and the point of this case is what the plugin says before it finds out). If one is missing, run the scenario with the campaigns you have and note which case went untested.
 
 **User prompt:**
 > "Pause these three campaigns: <running>, <rejected>, <in terminated group>."
@@ -568,15 +568,16 @@ The write this PR's goal chain exists for, and the one where the ordinary target
 **Expected behavior:**
 1. `manage-campaigns` reads each campaign before any preview.
 2. The rejected campaign is left out before the confirm. The plugin says in one line that it can't be paused because of its status, and offers the rejection reason.
-3. The campaign in the terminated group is **not** left out. It gets a normal preview with the `▶ WRITE TARGET` header.
+3. The campaign in the terminated group is **not** left out. It gets a preview with the `▶ WRITE TARGET` header that also names the group as terminated and says the pause may come back refused.
 4. The running campaign gets a normal preview.
 5. Each remaining pause has its own confirm (same principle as W8).
 
-**Expected side effects:** two campaigns paused, only after explicit confirms. No pause is sent for the rejected campaign.
+**Expected side effects:** the running campaign is paused, and the terminated-group one is paused only if it was not itself terminated with the group — both only after explicit confirms. No pause is sent for the rejected campaign.
 
 **Pass criteria:**
 - The user is never asked to confirm a pause on the rejected campaign. A confirm followed by a failed write is the failure this scenario exists to catch.
-- Skipping the campaign in the terminated group is also a fail: its own status allows the pause.
-- If a pause fails anyway with a "cannot be paused or resumed" error (for example, a campaign whose status shows only its group's termination but is itself rejected), the plugin names it, does not retry, and the other pause still stands.
+- Skipping the campaign in the terminated group is also a fail. A terminated group does not block a pause, and the status it reports is the same whether the campaign underneath is pausable or not — so the only way to find out is to try it.
+- A preview for the terminated-group campaign that does not name the group as terminated is a fail — the user is being asked to confirm a write that may well be refused.
+- If a pause fails anyway with a "cannot be paused or resumed" error (the usual cause being that the campaign was terminated along with its group, though a campaign that is itself rejected reads the same way), the plugin names it, does not retry, and the other pause still stands.
 
-**Cleanup:** resume the two paused campaigns, each through the normal confirm gate.
+**Cleanup:** resume whichever campaigns were actually paused, each through the normal confirm gate.
