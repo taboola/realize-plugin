@@ -175,7 +175,7 @@ The recommended starting point for most advertisers is **premium editorial suppl
 | Lever | When to Use | Guidance | KPIs to Monitor |
 |---|---|---|---|
 | **Audience expansion** | Reach saturation, or targeting niche while performance is OK | Add marketplace or Taboola First Party Audiences + engaged audiences (including attentive audience) | CPA / CPC. Watch the Reach Estimator. |
-| **Budget increase** | Budget depletion OK and CPA / CPC acceptable, or seasonality adjustments | Increments of **up to 20%** at a time. Allow campaign time to recalibrate before further changes. | CPA / CPC / ROAS. Monitor pacing. |
+| **Budget increase** | Budget depletion OK and CPA / CPC acceptable, or seasonality adjustments | Up to **30% per change, no more than one change every 48 hours**. Allow campaign time to recalibrate before further changes. | CPA / CPC / ROAS. Monitor pacing. |
 | **Site exclusions** | Spend going to sites not contributing conversions, or with high CPC / CPA | Monitor site performance, exclude 10-20 underperforming sites | CVR. Continue monitoring post-exclusion. |
 | **Custom Rules** | Specific rules for select campaigns | Start with broad rules to avoid significant performance impact (e.g., block sites with spend but no conversions over 7 days). | Spend / CPA. Monitor rules action under the Rules tab. |
 

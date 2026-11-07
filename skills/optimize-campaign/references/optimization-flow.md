@@ -251,7 +251,7 @@ Route by bidding strategy.
 
 | Strategy | Primary checks |
 |---|---|
-| Maximize Conversions | Frequent budget changes? (Max 20% per change / no more than every 2-3 days.) SpendGuard disabled? Custom Rules misaligned with real KPIs? Run dimensional drill-down for ad-level post-click underperformance. |
+| Maximize Conversions | Frequent budget changes? (Up to 30% per increase / no more than one change every 48 hours.) SpendGuard disabled? Custom Rules misaligned with real KPIs? Run dimensional drill-down for ad-level post-click underperformance. |
 | Enhanced CPC / Fixed Bid | Bid too restrictive? Run supply-side check and review auction insights for bid competitiveness. |
 | All strategies | Audience too restrictive? External factors (seasonality, market trends, competitive activity)? |
 
@@ -270,7 +270,7 @@ Two scenarios:
 | Scenario | Action |
 |---|---|
 | Performance acceptable + overspending | Allow 2-3 days for the algorithm to stabilise. Avoid mid-learning-phase budget cuts — reducing budget too early resets the learning phase. Only intervene if there are strict budget restrictions; prefer a moderate adjustment over a significant cut. |
-| Under-performing + under-spending | Walk delivery-constraint checks: (a) tracking healthy, (b) creatives approved, (c) audience not too narrow, (d) bid sufficient (Enhanced CPC / Fixed Bid), (e) learning phase still in progress — **this is a stop, not a note: if P5 is firing, (f) is off the table** unless Exception A applies, (f) for Maximize Conversions and **only when P5 is not firing**, consider increasing daily spend by up to 20% (under Exception A the raise is instead sized to clear the 8× floor in one move, per `SKILL.md` P5). |
+| Under-performing + under-spending | Walk delivery-constraint checks: (a) tracking healthy, (b) creatives approved, (c) audience not too narrow, (d) bid sufficient (Enhanced CPC / Fixed Bid), (e) learning phase still in progress — **this is a stop, not a note: if P5 is firing, (f) is off the table** unless Exception A applies, (f) for Maximize Conversions and **only when P5 is not firing**, consider increasing daily spend by up to 30% (under Exception A the raise is instead sized to clear the 8× floor in one move, per `SKILL.md` P5). |
 
 For Display campaigns specifically: confirm IAB sizes are uploaded (300×250 / 300×600 minimum); confirm no channel-publisher blocks stripping header-bidding supply; recommend Maximize Conversions as the bidding strategy.
 
@@ -344,7 +344,7 @@ When the user describes one of these behaviours, name it and correct gently. Don
 | User says / did | What's actually happening | What to do instead |
 |---|---|---|
 | "I paused and relaunched this campaign 3 times this week" | Each relaunch restarts the learning phase from zero. The algorithm never gets to a stable state. | Pick one configuration and leave it alone until the campaign reports it is out of learning (`cvr_learning_status` = `CVR_LEARNING_COMPLETE`; with a Target CPA, `target_cpa_learning_status` = `LEARNING_COMPLETED`). Expect roughly 7-10 days, but judge on the status, not the calendar. Patience outperforms restarts. |
-| "I'm changing the budget every day to chase performance" | Daily budget changes are the #1 self-inflicted CPA problem. The algorithm re-paces every change and never stabilises. | Change budget at most every 2-3 days, and by no more than 20% per change. |
+| "I'm changing the budget every day to chase performance" | Daily budget changes are the #1 self-inflicted CPA problem. The algorithm re-paces every change and never stabilises. | Change budget at most every 48 hours, and raise it by no more than 30% per increase. |
 | "I blocked 50 publishers because their CPA looked bad" | Most of those publishers likely had insufficient data — the CPA was noise, not signal. Mass-blocking starves the algorithm of supply. | Apply the site-block threshold (campaign clicks ≥ 500, conversions ≥ 5, per-site clicks ≥ 100 or 2/CVR). Unblock the ones that don't meet the bar. |
 | "I set Target CPA way below current performance to force it down" | Setting Target CPA far below actual CPA usually kills delivery — the algorithm can't bid competitively at that target. | Target CPA is a last-resort lever, set within 10-20% of stable CPA after 3-4 days of delivery — not at launch, not aspirationally. |
 | "I keep tweaking creatives, but performance gets worse" | Frequent creative swaps reset learning signals on the creative dimension. New creatives need their own learning. | Refresh on a schedule — every 2-4 weeks for most verticals, longer for finance/B2B. Refresh = new angle, not a word change. |

@@ -52,7 +52,7 @@ The algorithm distributes the daily budget across the day to maximise performanc
 | Creative approval | Verify all creatives approved and active. |
 | Audience targeting | Too restrictive — broaden. |
 | Bidding (Enhanced CPC / Fixed) | Slightly increase bids to stay competitive. |
-| Bidding (Maximize Conversions) | Increase daily spend by up to 20%. |
+| Bidding (Maximize Conversions) | Increase daily spend by up to **30% per change, no more than one change every 48 hours**. |
 | Pace Ahead feature (Realize UI only) | Use to accelerate spend if needed; set in the Realize UI. |
 
 ### Depletion-Miss Investigation (when the campaign did not hit its cap)
@@ -83,12 +83,12 @@ Keep an eye on the **Campaign Pacing column** in the performance report section 
 
 | Strategy | Action | Guardrail |
 |---|---|---|
-| **Maximize Conversions** | Increase daily spend by **up to 20%** | Allow the algorithm room to look for additional opportunities. |
+| **Maximize Conversions** | Increase daily spend by up to **30% per change, no more than one change every 48 hours** | A rule of thumb rather than a strict cap — watch CPA after each step and let the campaign recalibrate before the next. |
 | **Enhanced CPC or Fixed Bid** | Apply a **bid boost** | Only when the campaign shows stable performance **and** budget pacing is below 80-90%. |
 
 ### Scaling Rules
 
-- Consider increments of **up to 20% at a time**.
+- Increase by **up to 30% per change, no more than one change every 48 hours**. This covers every budget *increase* on Maximize Conversions, a shared campaign-group budget included. It is a rule of thumb rather than a strict cap, so it is advice, not a refusal.
 - **Allow the campaign time to recalibrate** before making further changes.
 - Monitor CPA / CPC / ROAS and campaign pacing when adjusting.
 - Factor seasonality — adjust budgets to stay competitive during peak periods.
@@ -142,19 +142,19 @@ This rule applies to budget post-mortems, A / B tests with different arm budgets
 ## Guardrails
 
 - Never set daily budget below 10× target CPA for Maximize Conversions campaigns ($50 minimum if CPA < $5).
-- Never increase budget by more than 20% at a time.
-- Never make frequent budget changes (more often than every 2-3 days) — this destabilises the algorithm.
+- Avoid increasing budget by more than 30% in one change — a rule of thumb rather than a hard limit, so advise it rather than refusing the write.
+- Never make frequent budget changes (more often than every 48 hours) — this destabilises the algorithm.
 - Never reduce budget during the learning phase unless absolutely necessary.
 - Never use the current `daily_spending_limit` for historical depletion math — reconstruct the end-of-day cap from the change log.
 - Never compare absolute $ across periods with different total budgets — % share primary, absolute secondary, Δ in pp.
-- Always allow 2-3 days for recalibration after any budget change.
+- Always let the campaign recalibrate before the next budget change — at least 48 hours between changes of any kind.
 - Always use lifetime budget for short-burst campaigns (2-10 days).
 - Always monitor the Campaign Pacing column in the Realize UI.
 
 ## Common Mistakes
 
 1. **Budget below 10× CPA.** Algorithm can't optimise effectively. Increase budget or start smaller and scale.
-2. **Frequent budget changes.** Resets learning, destabilises CPA. Max one change per 2-3 days.
+2. **Frequent budget changes.** Resets learning, destabilises CPA. Max one change per 48 hours.
 3. **Reducing budget during learning.** Resets learning phase, slows optimisation, negatively impacts CPA / CPC. Allow 2-3 days to stabilise first, then moderate adjustment only.
 4. **Daily budget for short-burst.** Unspent budget doesn't carry over. Use lifetime budget.
 5. **Narrow targeting on short-burst.** Can't spend budget in time. Keep targeting broad.
