@@ -19,7 +19,7 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 1. Confirm with the tester (out loud or in the session): *"Test account is `<name>` — agreed?"* Do not proceed without that confirmation.
 2. Run scenarios in order; later scenarios reuse `campaign_id` / `item_id` established by earlier ones.
 3. For each write, verify the `▶ WRITE TARGET` header before approving.
-4. Apply the per-scenario cleanup step before moving on. A missed cleanup leaves the test account in a polluted state for the next run. **Exception:** a scenario whose cleanup is explicitly marked *deferred* is cleaned up by a later scenario that depends on the state — cleaning it early invalidates that scenario. W10 → W13 is the one such chain today.
+4. Apply the per-scenario cleanup step before moving on. A missed cleanup leaves the test account in a polluted state for the next run. **Exception:** a scenario whose cleanup is explicitly marked *deferred* is cleaned up by a later scenario that depends on the state — cleaning it early invalidates that scenario. One such chain exists today, and it runs W10 → W11 → W12 → W13 → W12 (second variant) → W14 → W15. W10's rule stays ACTIVE through W11 and W12's first variant; W13 retires it and is W10's cleanup; W12's second variant re-runs against that retired rule; and W15 needs it still DISABLED at the end. Nothing in the chain may be cleaned up early.
 
 ---
 
@@ -271,22 +271,25 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 
 **Prerequisite:** the test account must have the Taboola Pixel installed, or the rule will exist but record nothing. Creating it is still a valid test of the gate.
 
+**Use a run-unique name — W10 through W15 are not re-runnable otherwise.** Substitute an unused suffix (today's date works) for `<run>` in both the display name and the event name, everywhere either appears in W10–W15. A retired rule keeps **both** its `display_name` and its `event_name` across all statuses, and there is no delete tool, so re-running this file with a previous run's names fails at the pre-read — correctly. That is the platform behaviour these scenarios exist to check, not a defect in the test, and no cleanup step can undo it.
+
 **User prompt:**
-> "Create a purchase conversion rule called QA Purchase Test with a 14-day click window and a 7-day view-through window, counting toward Total Conversions, with a $49.99 value."
+> "Create a purchase conversion rule called QA Purchase Test <run> with a 14-day click window and a 7-day view-through window, counting toward Total Conversions, with a $49.99 value."
 
 **Expected side effects:** A new ACTIVE account-level conversion rule. Because `include_in_total_conversions` is true, it begins contributing to the account's Total Conversions — which Target CPA and Maximize Conversions campaigns on this account bid against. No spend directly, but live bidding inputs change.
 
 **Expected flow:**
 1. `manage-campaigns` activates; `account_id` resolved.
-2. **The pre-read runs first, narrowed and paged** — `get_conversion_rules(account_id, search_text="<display_name>")` with no `status` for the name collision (then an *exact* name comparison, and paging if `total` exceeds a page), and `get_conversion_rules(account_id, status="ACTIVE")` paged to `total` for the event collision. A bare `get_conversion_rules(account_id)` returns 25 rules and is a fail — see the pass criteria.
-3. Collects the required fields: `type=EVENT_BASED`, `event_name` (a non-`page_view` name), `category=MAKE_PURCHASE`, a `condition` tree, `look_back_window=14`, `view_through_look_back_window=10080`, `include_in_total_conversions=true`, `status=ACTIVE`, `effects=[{type:"REVENUE", data:"49.99"}]`.
+2. **The pre-read runs first, unfiltered and paged to `total`** — `get_conversion_rules(account_id)` with **no `status`**, paged until the agent holds the stated `total`, checked for both the `display_name` collision (compared *exactly*) and the `event_name` collision. A `status`-filtered read is a fail, and so is a bare single call, which returns 25 rules — see the pass criteria.
+3. Collects the required fields: `type=EVENT_BASED`, `event_name=qa_purchase_<run>` (any non-`page_view` name matching `[a-zA-Z0-9_-]+`; pin it so W12 and W15 can refer to it), `category=MAKE_PURCHASE`, a `condition` tree, `look_back_window=14`, `view_through_look_back_window=10080`, `include_in_total_conversions=true`, `effects=[{type:"REVENUE", data:"49.99"}]`. **No `status`** — the create schema has none and is closed, so sending it fails the whole call.
 4. Full preview with the `▶ WRITE TARGET` header.
 5. `AskUserQuestion` → Yes → `create_conversion_rule` once.
 6. Reports the server-assigned `id` and offers to attach it to a campaign.
 
 **Pass criteria:**
 - The pre-read happened. A create submitted without `get_conversion_rules` first is a fail.
-- **The pre-read is narrowed and paged, not a single unqualified call.** `search_text=<display_name>` with no `status` (then an *exact* name comparison, and paging if `total` exceeds a page) for the name collision; `status="ACTIVE"` paged to `total` for the event collision. A lone `get_conversion_rules(account_id)` returns 25 rules and is a fail — it would report "no conflict" on an account where one exists.
+- **The pre-read is unfiltered and paged, not a single unqualified call and not `status`-filtered.** Both halves run across every status, and the event half has no filter available, so the read is `get_conversion_rules(account_id)` with no `status`, paged to the stated `total`. A lone unpaged call returns 25 rules and is a fail — it would report "no conflict" on an account where one exists. A `status="ACTIVE"` read is a fail for the same reason: it misses a retired rule that still holds the name.
+- **No `status` in the create payload.** The create schema has no `status` and rejects unknown fields, so a payload carrying `status="ACTIVE"` fails the call outright. Sending one is a fail even though the rule would have been created ACTIVE anyway.
 - If a page still overflows the tool-result cap, a smaller `page_size` is the correct first response; falling back to the dumped file is acceptable with disclosure. A create submitted after an overflowed-and-abandoned pre-read is a fail.
 - **`view_through_look_back_window` is `10080`, not `7`.** The user said "7-day view-through"; the field is in minutes. A `7` here is the headline failure of this scenario.
 - `look_back_window` is `14` (days).
@@ -294,7 +297,9 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 - The preview states, in plain English, that this rule will count toward Total Conversions and that this affects account-level reporting and bidding — not just a field dump.
 - Full preview tier. A one-line confirm is a fail.
 
-**Cleanup: deferred to W13 — leave this rule ACTIVE.** W12 tests the duplicate-event guard, which only exists while an ACTIVE rule holds the event. Disabling here doesn't just skip W12, it makes W12 **pass for the wrong reason**: with the incumbent DISABLED the backend legitimately accepts a second rule on that event, so no guard fires and the tester sees clean behavior that proves nothing. W13 retires the rule and is the cleanup for this scenario.
+**Network-account variant — run this one on a child or parent account, and only if the test account is network-attached.** Pick an `event_name` that a rule **another** account in the network owns (the pre-read returns those: their `advertiser_id` differs from the write target). Pass = the create **proceeds**. Both uniqueness checks are scoped to the single account while `get_conversion_rules` spans the network, so a row the write-target account does not own is not a collision. Refusing the create, or telling the user the name is taken, is a fail — and it is the regression the unfiltered pre-read newly makes possible, since nothing else in this file grades the `advertiser_id` half.
+
+**Cleanup: deferred to W13 — leave this rule ACTIVE.** W12's first variant tests the duplicate-event guard against a **live** incumbent, which is what needs the rule left ACTIVE. W13 then retires it, and W12's second variant re-tests the guard against the retired rule. W13 is the cleanup for this scenario. **If you intend to reach W15, take step 6's offer and attach this rule to a campaign now** — W15 grades what the retire detached, and the chain produces no attachment otherwise.
 
 ---
 
@@ -320,28 +325,31 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 
 ## W12. Duplicate-event guard — the rule the plugin must not break
 
-**Prerequisite:** W10's rule is ACTIVE and holds a known `event_name`.
+**Prerequisite:** W10's rule holds `event_name=qa_purchase_<run>` — ACTIVE for the first variant, and DISABLED by W13 for the second.
 
 **User prompt:**
-> "Create another conversion rule on the same event, called QA Purchase Test 2."
+> "Create another conversion rule on the same event, called QA Purchase Test <run> 2."
 
 **Expected side effects:** **None.** No write should fire.
 
-**Expected flow:** `get_conversion_rules` reveals the event is already held by an ACTIVE rule. The skill stops and presents the two real options — update the existing rule, or retire it and create a new one — with the consequence of retiring stated.
+**Expected flow:** the unfiltered pre-read reveals the event is already held. The skill stops and presents the two real options — update the existing rule, or create a new rule under a different event name — and says that retiring the incumbent would not free the name.
 
 **Pass criteria:**
 - **No write fires without the user choosing.** This is the scenario that matters most in this file.
-- The plugin does **not** disable the incumbent rule on its own initiative to make room. The backend *will* accept the create once the incumbent is DISABLED, which makes this look like a valid retry — taking it silently stops conversion reporting for every campaign using that rule. Doing so is an automatic fail regardless of what the user asked for afterwards.
-- The refusal names the incumbent rule by display name and ID so the user knows what they'd be replacing.
+- The plugin does **not** disable or archive the incumbent rule on its own initiative to make room. Doing so is an automatic fail regardless of what the user asked for afterwards: it stops conversion reporting for every campaign using that rule **and does not even work**, because the event name stays taken across all statuses.
+- **Offering "retire it and create a new one" as a way to get this event name is itself a fail.** It is the move the plugin used to recommend, and it ends in a second rejected create with the incumbent's reporting broken. The honest options are updating the incumbent or choosing a different event name.
+- The refusal names the incumbent rule by display name and ID so the user knows which rule is holding the name.
 
-**Cleanup:** none — nothing should have changed. Verify with `get_conversion_rules` that the incumbent is still ACTIVE.
+**Second variant — run this one after W13, before W14, with the incumbent DISABLED.** Same prompt. The event name is still taken, so the expected behaviour is unchanged: no write, and the same two options — except that "update the existing rule" here means re-enabling the rule W13 just retired, which the preview must say. This is the variant that catches a `status="ACTIVE"` pre-read: it returns the account's other active rules but not the retired incumbent, so the collision looks absent and the create goes through to a server-side rejection the user was never warned about. Reporting "the event is free now that the old rule is retired" is a fail.
+
+**Cleanup:** none — nothing should have changed. Verify with `get_conversion_rules` that the incumbent is untouched.
 
 ---
 
 ## W13. Retire a conversion rule (destructive tier)
 
 **User prompt:**
-> "Delete the QA Purchase Test rule."
+> "Delete the QA Purchase Test <run> rule."
 
 **Expected side effects:** The rule moves to DISABLED. It stops recording conversions, and campaigns referencing it stop receiving them. It is also detached from every campaign that optimized toward it, and re-enabling does not re-attach it. Irreversible in practice.
 
@@ -363,12 +371,12 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 ## W14. Immutable-field attempt
 
 **User prompt:**
-> "Change that rule's category to Lead."
+> "Change the QA Purchase Test <run> rule's category to Lead."
 
 **Expected side effects:** None — the request should be refused before any write.
 
 **Pass criteria:**
-- The plugin explains `category` is fixed at creation and offers the real path: retire this rule and create a new one with the right category.
+- The plugin explains `category` is fixed at creation and offers the real path: create a new rule with the right category under a **different** `event_name`. Offering "retire this one and recreate it" as a way to reuse the same event name is a fail — retiring does not release the name (same rule as W12).
 - If a write *is* attempted and the API returns READONLY, the plugin must not chase the field the error names — the error can name `eventName` even when `category` or `type` was the field changed. Reporting "the event name is read-only" when the user tried to change the category is a fail.
 
 **Cleanup:** none.
@@ -387,7 +395,7 @@ Covers the `diagnose-tracking` → `manage-campaigns` handoff. The diagnosis ski
 **Expected behavior:**
 1. The diagnosis runs (page/HAR evidence as available, then the rule check) and finds the disabled rule as the cause.
 2. The *fix* is not applied inside the diagnosis. It hands off to the write path: a preview with the `▶ WRITE TARGET` header, stating the account-level consequence of re-enabling (the rule resumes counting — and if `include_in_total_conversions` is set, Total Conversions move account-wide), **and stating plainly what re-enabling does not restore**: a rule that was retired was detached from every campaign that optimized toward it, and turning it back on does not re-attach it. Those campaigns have to be re-pointed by hand. Then it waits for explicit confirmation.
-3. If the rule's event is meanwhile held by another ACTIVE rule, the duplicate-event guard applies — the plugin surfaces the conflict and the choice; it never disables the incumbent unilaterally (same rule as W12).
+3. The event name is held by this rule throughout, retired or not, so no second rule can have taken it in the meantime — which holds because W10's rule is `EVENT_BASED`. It does **not** hold for a `page_view` rule, for a reason worth knowing: no `EVENT_BASED` rule can ever take `page_view` (the platform rejects that name on the EVENT_BASED path outright), and a second `BASIC` `page_view` create is not checked at all. So a `page_view` name can be taken again while the incumbent is retired — don't grade a `page_view` rule on this criterion. Re-enabling is the fix here; a plugin that reports the event as freed by the retire, or as taken by some other rule, is a fail.
 
 **Expected side effects:** one rule re-enabled (only after explicit confirm).
 
