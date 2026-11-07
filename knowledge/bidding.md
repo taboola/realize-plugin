@@ -243,7 +243,7 @@ If the campaign is pacing ahead of expectation:
 | Creative approval | Verify all creatives are approved and active. |
 | Audience targeting | Check whether targeting is too restrictive. |
 | Bidding (Enhanced CPC / Fixed) | Consider slightly increasing bids to stay competitive in auctions. |
-| Bidding (Maximize Conversions) | Consider increasing daily spend by up to 20% of existing spend. |
+| Bidding (Maximize Conversions) | Consider increasing daily spend by up to **30% per change, no more than one change every 48 hours**. |
 | Pace Ahead feature (Realize UI only) | Use to accelerate spend for a specific campaign if needed; set in the Realize UI. |
 
 For display campaigns specifically, also check:
@@ -265,7 +265,7 @@ If a campaign is still reporting `CVR_LEARNING` well past the typical window (sa
 | Audience targeting | If the audience is too narrow, expand targeting or add new segments. Use the Reach Estimator to validate sufficient scale. |
 | Creative performance | Use auction insights to identify campaign diversity or other blockers restricting delivery. |
 | Bid / spend (Enhanced CPC) | Consider adjusting the bid to allow more flexibility during optimisation. |
-| Bid / spend (Maximize Conversions) | Consider increasing the budget by up to 20% of existing spend so the algorithm can explore additional opportunities. |
+| Bid / spend (Maximize Conversions) | Consider increasing the budget by up to **30% per change, no more than one change every 48 hours** so the algorithm can explore additional opportunities. |
 
 ---
 
@@ -302,7 +302,7 @@ Route by bidding strategy.
 
 ### Maximize Conversions
 
-1. Ensure you are not making frequent changes (especially to budget). If adjusting budget, use increments / decrements of up to **20% at a time** and allow **2-3 days** for recalibration.
+1. Ensure you are not making frequent changes (especially to budget). Increase by up to **30% per change, no more than one change every 48 hours**, and keep any decrease moderate — the 30% figure is a scaling rule for increases and says nothing about cuts.
 2. Make sure **SpendGuard is not disabled**, and that Custom Rules are aligned with real KPIs to protect against underperforming sites or ads.
 3. If no Custom Rules exist, **manually review the site report** and block underperforming sites. Also manually review the ad report, pause underperforming ads, and add new ads.
 4. **Review ads** — look for high-CTR / high-spend ads with post-click underperformance. Check whether messaging is misleading or over-promising.
@@ -336,7 +336,7 @@ High CPA indicates inefficiency. Check in this order.
 
 ### Maximize Conversions
 
-Increase daily spend by **up to 20%**, allowing the algorithm room to look for additional opportunities.
+Increase daily spend by up to **30% per change, no more than one change every 48 hours**, allowing the algorithm room to look for additional opportunities.
 
 ### Enhanced CPC or Fixed Bid
 
@@ -355,11 +355,11 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 - Never make frequent campaign changes during the learning phase — this resets learning and worsens performance.
 - Never reduce budget aggressively during learning — moderate adjustments only, and only if absolutely necessary.
 - Never judge CPA performance in the first 2-4 days — this is normal learning volatility.
-- Never adjust budget by more than 20% at a time.
+- Avoid increasing budget by more than 30% in one change, or more often than every 48 hours — a rule of thumb rather than a hard limit.
 - Never recommend per-item / per-creative bid changes — they don't exist on any Realize bid strategy.
 - Never recommend per-publisher bid moves on Maximize Conversions / Target CPA / Maximize Value — only block / unblock / whitelist.
 - Never label a Learning-Period campaign as "underperforming" — it is calibrating, not failing.
-- Always allow 2-3 days for recalibration after any budget change.
+- Always let the campaign recalibrate before the next budget change — at least 48 hours between changes of any kind.
 - Always use Maximize Conversions as the default bidding strategy.
 - Always wait until the campaign reports it is out of learning before evaluating it (`cvr_learning_status` = `CVR_LEARNING_COMPLETE`; with a Target CPA, `target_cpa_learning_status` = `LEARNING_COMPLETED`). Typically ~7-10 days, but never evaluate on the calendar alone.
 - Always check post-click CPA performance (not just last-click) when setting Target CPA benchmarks.
@@ -369,7 +369,7 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 
 1. **Setting Target CPA too early.** Prolongs learning phase, delays stabilisation. Wait 3-4 days for data first.
 2. **Setting an aspirational Target CPA.** Algorithm cannot hit an unrealistic target, scale drops. Set at or near actual current CPA.
-3. **Frequent budget changes during learning.** Resets learning each time. Make one change, wait 2-3 days.
+3. **Frequent budget changes during learning.** Resets learning each time. Make one change, wait 48 hours.
 4. **Reducing budget to fix high CPA.** Limits the algorithm's ability to optimise. Address root cause (tracking, creatives, targeting) instead.
 5. **Blocking publishers based on Sponsored Content performance in display campaigns.** Sponsored Content and Display have different dynamics — evaluate each campaign type independently.
 6. **Using Fixed Bid for conversion campaigns.** No conversion optimisation. Use Maximize Conversions unless there is a specific reason not to.

@@ -9,6 +9,16 @@ All notable changes to this plugin will be documented here. Format loosely follo
 - **Codex subtitle shortened** to "Manage Realize campaigns" to fit OpenAI's 30-character `shortDescription` limit.
 - **OpenAI submission branch.** The OpenAI zip is built from `openai-submission`. That branch differs from `main` only in `.mcp.json`, which drops the `X-Realize-Client` header and the `oauth.callbackPort` entry because OpenAI configures OAuth in its portal. `main` keeps both, since the Claude Code install and the Anthropic directory need them. Traffic from the OpenAI build therefore carries no `X-Realize-Client` attribution.
 
+## [0.5.8] — Unreleased
+
+### Budget increases move from 20% to 30%, and the cadence from 2-3 days to 48 hours
+The layered approach to budget increases went GA on Maximize Conversions campaigns, and the published best practice moved with it. The plugin still taught the superseded numbers in every file that mentions them.
+- **Increase by up to 30% per change, no more than one change every 48 hours.** Updated in `knowledge/budget.md`, `knowledge/bidding.md`, `knowledge/targeting.md`, `skills/optimize-campaign/SKILL.md` and its `optimization-flow.md` reference.
+- **It is a rule of thumb, not a strict cap.** Two guardrails that capped every budget change at 20% now advise rather than refuse, because an increase above the figure is not an error and the plugin should not block a write over it.
+- **Increases only.** The figure is a scaling rule for budget *increases* on Maximize Conversions, and for a shared campaign-group budget. It says nothing about cuts, so the decrease guidance is unchanged and "never reduce budget to fix a high CPA" still stands. Enhanced CPC and Fixed Bid are unchanged too — their scaling lever is a bid boost, not a budget percentage.
+- **2-3 days survives where it belongs.** Letting a campaign stabilise after a budget *cut* during learning is still 2-3 days; only the increase cadence moved to 48 hours.
+- Version set in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` and `.mcp.json`'s `X-Realize-Client` header.
+
 ## [0.5.5] — Unreleased (pending directory review)
 
 ### Added — campaign groups and the conversion-goal chain
