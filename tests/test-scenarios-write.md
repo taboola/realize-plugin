@@ -33,13 +33,13 @@ A `▶ WRITE TARGET: <account_name> (<account_id>)` header must appear on every 
 **Expected flow:**
 1. `manage-campaigns` skill activates.
 2. Resolves `account_id` via `search_accounts` (or uses cached test-account `account_id`).
-3. Validates inputs: marketing_objective = `ONLINE_PURCHASES`; bid_strategy = `MAX_CONVERSIONS`; budget $250/day matches the 10× CPA minimum exactly. No country supplied → asks the user to confirm US-only via `country_targeting`.
+3. Validates inputs: marketing_objective = `ONLINE_PURCHASES`; bid_strategy = `MAX_CONVERSIONS`; budget $250/day meets the 10× CPA floor exactly, at the bottom of the 10–15× setup range. No country supplied → asks the user to confirm US-only via `country_targeting`.
 4. Renders a full preview block leading with `▶ WRITE TARGET: <account_name> (<account_id>)`, all resolved params echoed, launch state = "PAUSED until Realize approves".
 5. `AskUserQuestion` → Yes.
 6. Calls `create_campaign(..., is_active=false)`. Response contains new `campaign_id`.
 7. Echoes the new `campaign_id` and reminds the user about the 24–48h review.
 
-**Pass criteria:** Campaign created with `is_active=false`. Preview header is present and shows the test account. Budget passes the 10× CPA check. No write submitted before the confirm gate.
+**Pass criteria:** Campaign created with `is_active=false`. Preview header is present and shows the test account. Budget passes the 10× CPA floor; noting it sits at the bottom of the 10–15× setup range is acceptable, blocking on it is a fail. No write submitted before the confirm gate.
 
 **Cleanup:** Note the new `campaign_id`. Delete via UI once review completes (no MCP delete tool).
 
