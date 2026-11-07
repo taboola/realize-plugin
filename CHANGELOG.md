@@ -4,9 +4,12 @@ All notable changes to this plugin will be documented here. Format loosely follo
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+- **Codex package renamed to `realize-plugin-openai`.** `name` in `.codex-plugin/plugin.json` changed from `realize-plugin` to `realize-plugin-openai`, as OpenAI's marketplace review asked: the new name is uploaded as a new plugin so it doesn't inherit the old draft's configuration issue. The display name stays `Realize Plugin`. The Claude Code plugin keeps the name `realize-plugin`.
+- **Codex subtitle shortened** to "Manage Realize campaigns" to fit OpenAI's 30-character `shortDescription` limit.
+- **OpenAI submission branch.** The OpenAI zip is built from `openai-submission`. That branch differs from `main` only in `.mcp.json`, which drops the `X-Realize-Client` header and the `oauth.callbackPort` entry because OpenAI configures OAuth in its portal. `main` keeps both, since the Claude Code install and the Anthropic directory need them. Traffic from the OpenAI build therefore carries no `X-Realize-Client` attribution.
 
-## [0.5.6] — Unreleased
+## [0.5.7] — Unreleased
 
 ### Campaigns that cannot be paused or resumed are left out before the confirm
 Realize refuses to pause or resume a campaign whose own status is Rejected or Terminated. The MCP says so on `update_campaign`'s `is_active` field, and its error tells the caller not to retry. The plugin still showed those campaigns in a pause preview, so the user confirmed a change that was going to fail.
@@ -14,10 +17,78 @@ Realize refuses to pause or resume a campaign whose own status is Rejected or Te
 - The statuses are not listed in the plugin. The skill points at the MCP's `is_active` description, so there is one source to keep current.
 - A campaign whose *group* was terminated is not skipped. A shown status can hide a block, so a pause that still fails this way is not retried; the MCP's error is the backstop (and the only guard on Codex, which doesn't ship `manage-campaigns`).
 - Post-write check for a pause or resume reads `is_active`, not `status`: a campaign in a terminated group keeps the group's status either way, and one resumed inside a paused group still shows the group's paused status.
-- New write scenario W16.
+- New write scenario W22.
 - Version set in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` and `.mcp.json`'s `X-Realize-Client` header.
 
 ## [0.5.5] — Unreleased (pending directory review)
+
+### Added — campaign groups and the conversion-goal chain
+
+- **`get_campaign_groups` is wired**, and with it the real goal-resolution order: **campaign → group → account default**. A campaign's own `conversion_rules` *replace* the group's rather than adding to them, and an empty `rules` array means it inherits — it does not mean "no goal". A grouped campaign can also carry its own goal that the Realize UI does not surface, and that goal wins while the rule behind it is still attached. `knowledge/campaign-structure.md` is the canonical statement; the skills point at it.
+- **`create_campaign_group` / `update_campaign_group` are wired**, through the same preview-then-confirm gate as every other write, taking the write count to **10**. They have the widest blast radius on the surface: a group write reaches every campaign in the group, and switching the budget split to the automatic one also rewrites all their bid strategies. `skills/manage-campaigns/references/mcp-write-surface.md` §3c carries the fields and the full list of what the preview must say.
+- **Attaching an ungrouped campaign to a group** was already possible via `campaign_group_id` and the docs did not say so. Now documented, with its limits: attach only, `CUSTOM`-budget targets only, two account gates that both default off, and no way back out from here.
+
+### Added — read the rejection reason
+
+Every campaign and item already returns a read-only `policy_review` carrying `reject_reason` and `reject_reason_description`, items also `reviewer_notes`; campaigns carry `inventory_summary`. The plugin named none of it, refused a rejected ad with no reason attached, and listed reading the reason as a *future* MCP ability in three places. It is now read on both the read and write paths, the three gap rows are gone, and both test suites assert it.
+
+Editing a rejected ad is also how it is resubmitted. The plugin refused that edit and offered only a rebuild, leaving the user with a reason and no remedy.
+
+### Changed — one source of truth per rule (review feedback on #24)
+
+`.claude/CLAUDE.md` gains *Three sources of truth, and what this plugin may copy*: the Realize platform answers what the system does, the MCP tool schema answers what the tool accepts, this plugin answers which tool to reach for and why. Each layer may rely on the one above it; none may restate it.
+
+Applied here:
+
+- **The objective → KPI table is deleted.** Upstream generates its tool description from the same table its validator raises on, so that copy cannot drift. Ours was the only one that could.
+- **The managed-budget rule is stated once** and linked. Enum re-listings drop from 16 to 10 (`CPA_BASED_ALLOCATION`) and 27 to 10 (`FULLY_SHARED`).
+- **Capability limits are now limits of this plugin**, not claims about Realize or the MCP — those rot on upstream's release schedule, not ours. Branch-relative phrasing ("not enabled in this revision") is gone.
+
+### Fixed — claims the platform source contradicts
+
+Checked against the Realize platform and MCP sources, and against live payloads, on 2026-11-03.
+
+- **A rejected ad can be edited** — that is how it is resubmitted. It cannot be set active in the same write, and some accounts cap resubmissions.
+- **Switching a group to `AUTOMATIC` rewrites every member campaign's bid strategy** to Maximize Conversions. The preview described budget control only.
+- **`AUTOMATIC` and `CPA_BASED_ALLOCATION` are one state under two names**, and the second is what most reads return — so scoping the `MAX_CONVERSIONS` requirement to `AUTOMATIC` alone let a rejected write through.
+- **`approval_state` is `APPROVED` / `REJECTED` / `PENDING`.** `PENDING_APPROVAL` belongs to `status`, so the optimization gate stopped on a value the field cannot hold and a campaign awaiting review was diagnosed for bidding.
+- **Returning a group to `CUSTOM`** splits its budget equally and does not restore bid strategies; previously recorded as undocumented.
+- **`CRAWLING` items are refused on most accounts** — the tool text lists them as fully editable.
+- **Moving or detaching a campaign has no MCP tool but does have an API path**, and taking a campaign out of a group pauses it. Saying the platform cannot do it was wrong.
+- **A fifth campaign field is read-only in a managed group** (`budget_additional_parameters.pace_ahead_factor`), and an attach has a second account gate that lets the write land while skipping every group-level check.
+- **`MAX_CONVERSIONS` is required, not recommended,** in a managed group — corrected from the earlier position in this same release.
+
+Four of these contradict the MCP's own tool descriptions; they are recorded here with the date checked and reported upstream.
+
+### Fixed — second source-check pass (review feedback on #24)
+
+Re-checked against the Realize platform and MCP sources on 2026-11-04. Twelve corrections, all of which changed what the agent is told to do.
+
+- **A deleted campaign group reads back `TERMINATED`, not `STOPPED`.** The platform maps its internal `STOPPED` to `TERMINATED` on the way out, so `STOPPED` is a filter value no read ever returns. Six places said the opposite, and a deleted group was going to be reported as live. A deleted group is also invisible without `statuses=["TERMINATED"]`, and a read by id comes back not-found.
+- **Retiring a conversion rule detaches it from every campaign that optimized toward it**, in one account-wide write; a campaign left with no other optimized rule then falls back to its group's goal. The plugin said the campaign keeps optimizing toward the retired rule and the group does not take over — backwards. Campaign *groups* are not cleaned up this way, so a group can keep pointing at a dead rule; the warning moved there.
+- **A campaign's conversion rules already arrive with their name, status and optimization flag.** `conversion_rules.rules` carries `display_name`, `status`, `include_in_total_conversions` and `is_optimization_enabled` — the `{id}`-only shape is the *write* schema, generalized onto reads by mistake. The per-id round-trip is no longer required to name the event.
+- **`is_optimization_enabled: false` means a rule is only tracked, not optimized toward.** The plugin called every listed rule the campaign's goal, which is a wrong-KPI answer whenever a tracked rule is present.
+- **`0 / 0 / 0` ad counts are not evidence of a problem.** A catalog campaign reports zero while serving normally — the zeros are substituted when no directly attached ads exist — and the optimization gate stopped and declared that the cause. An RSS campaign reads zero until its feed is first read, and any campaign reads zero while its first ads are still being crawled. Ads placed from the creative library are counted from the start, so a library campaign reading zero really is empty. `list_items` cannot settle it either: it returns nothing for a catalog campaign, and on an RSS campaign it hides the generated ads behind the feed. No campaign field separates a catalog campaign from a genuinely empty one, so the gate now reports and continues instead of stopping.
+- **The budget-field rule is keyed to managed-vs-`CUSTOM`, not to `AUTOMATIC`.** All five locked fields lock in a `FULLY_SHARED` group too, and omitting them there is safe — the campaign carries no budget of its own; the group owns and paces it rather than the call being rejected. One table cell said both things in one line.
+- **A campaign's `marketing_objective` is editable on update**, not locked at create. `update_campaign` accepts it and the API has no read-only check for it on campaigns. The read-only-unless-enabled rule belongs to campaign *groups*, where it defaults to off.
+- **The bid-strategy rewrite has three documented exceptions**, now listed once in the write-surface reference instead of being restated in the guardrails and the agent file. Only the automatic split rewrites bid strategies; a shared-split group still rewrites member budgets on a budget change. The preview still states the rewrite as what will happen, and now offers to check the members rather than claiming either outcome is settled.
+- **Campaign-group names are unique per account and the platform enforces it** — the plugin said they were not guaranteed unique. A colliding create or rename comes back a 400, and the agent had nothing naming that as a failure mode. A **deleted** group also keeps its name reserved while the default listing hides it, so the blocking group can be one the agent cannot see without asking for `TERMINATED`.
+- **`spending_limit_model: NONE` on its own is a valid group budget.** The plugin required `daily_cap` and `STRICT` pacing with it unconditionally, so it refused a create the platform accepts. The cap is required only once another budget field travels with `NONE` — and the same table already described bare `NONE` as the unlimited budget one row up.
+- **Creating a campaign into a `CUSTOM` group without budget fields does not leave it without a budget** — it copies the group's budget onto the campaign in full and undivided — the group's monthly limit if it has one, otherwise its lifetime total, plus the group's daily cap and pacing, never a share. The plugin documented those fields as merely optional there, so a campaign the user expected to be capped by the group could be created able to spend the whole group budget. Two adjacent traps are now stated: with an unlimited group budget the same omission is rejected for a missing `daily_ad_delivery_model`, and sending any one of the four makes two of them required.
+- **Reading a group by id is right for the wrong reason.** The listing hydrates conversion rules through the same service as the by-id read; what it genuinely leaves out is `conversion_configuration`, the attribution window. The 2026-10-14 production observation behind the old rule was a group that simply had no rules.
+
+### Fixed — review follow-ups on #24
+
+- **Retiring a campaign group's only rule leaves that group's campaigns with a decaying goal, never the account default.** What a campaign optimizes toward is derived from recent conversion reporting, which does not exclude a retired rule, so the campaigns keep optimizing toward the retired rule until it ages out of that window and only then toward nothing. The clock runs from the rule's last recorded conversion, not from the retire — up to about six weeks for a rule that was still converting, and straight away for one that had already gone quiet. Reporting the campaigns as goal-less on the day of the retire is wrong in the direction that prompts a panic change. Also: **re-enabling a rule does not re-attach it** to the campaigns the retire detached it from — the detach runs on the way into `DISABLED` / `ARCHIVED` and has no inverse, so those campaigns need re-pointing by hand. Campaigns that resolve at the account default do pick the rule up again; only the explicit attachments are lost. Both facts are now in the retire preview, in W13 and in W15.
+- **A group's `conversion_rules: null` means different things depending on the read.** From the listing it spells "no rules"; from a by-id read it means unread. One test variant asserted the by-id reading against a listing-shaped setup, contradicting the rule it was meant to check.
+- The merge-conflict-marker check in CI skips binary files, matching the secret scan.
+- The `spending_limit_model` row no longer runs two rules into one sentence, and its pointer names the subsection that actually holds the note.
+
+### Fixed
+
+- **No more "raise bid" advice for Maximize Conversions.** The algorithm sets the bid, so there is no bid to raise. `knowledge/bidding.md`'s *When to Switch Strategies* and *CPA Spike Signal Table* rows now say "Expand targeting, consider splitting out top placements".
+- **Group reads go by id** — the list form leaves the group's attribution window (`conversion_configuration`) unpopulated, and only the by-id read fetches it.
+- **`search_geos` takes `dma`, not `dmas`** — the call was rejected outright.
 
 ### Directory submission fixes (DEV-240750)
 The directory check held 0.5.4 for policy review. This release clears every finding that needs a code change, and the follow-up code review's findings on that fix. Version set in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `.mcp.json`'s `X-Realize-Client` header.
@@ -52,13 +123,10 @@ The directory check held 0.5.4 for policy review. This release clears every find
 - **`UNREAD_ASSET_REFERENCED` (7):** docs and CI no longer name the listing icon by path. The duplicate CI icon check is removed, because the directory check reports a missing icon itself.
 - **Tests:** test fixtures that look like a local-file URL or a `user:pass@` URL are assembled at runtime, the same rule as `test-build-bundle.js`.
 - **`INSTALL.md` / settings example:** the `Bash(curl:*)` opt-in is removed. The page-fetch section now says the prompt is deliberate instead of claiming "no opt-in needed", which was wrong: a skill grant lasts one turn.
-- **CI:** runs `test-fetch-page.js`. *Directory-check guards* now holds every skill's `allowed-tools` to an allowlist: plain read tools, domain-scoped `WebFetch`, the one scoped `Edit`, and only the skill's **own** script in the exact quoted form. No `..`, no other skill's script, no wildcards.
+- **CI:** runs `test-fetch-page.js`. *Directory-check guards* now holds every skill's `allowed-tools` to an allowlist: plain read tools, domain-scoped `WebFetch`, the one scoped `Edit`, and only the skill's **own** script in the exact quoted form. No `..`, no other skill's script, and no bare `*` — a `*` is allowed only inside a filename, as in `complaint-*.txt`.
 - **Left for the reviewer:**
   - `MCP_FORWARDS_CREDENTIAL_ENV`: nothing reads a credential. Login is Claude Code's OAuth against the MCP, and the only header is the static client identifier.
   - `UNKNOWN_KEY` on `privacyPolicyUrl`: the finding says no action is needed.
-
-### Fixed
-- **No more "raise bid" advice for Maximize Conversions.** In `knowledge/bidding.md`, the *When to Switch Strategies* row for a Maximize Conversions campaign with high CVR and low scale told users to "raise bid". On Maximize Conversions the algorithm sets the bid, so there is no bid to raise (see the Bid Levers matrix in the same file). The row now reads "Expand targeting, consider splitting out top placements". The matching *CPA Spike Signal Table* row (High CVR, Low Scale), which covers all bid strategies, is aligned to the internal Realize Best Practices source (which has no "raise bid" there) and drops it too. Raising the bid on Enhanced CPC / Fixed Bid is still covered in `skills/optimize-campaign/references/optimization-flow.md` §2.1 and `knowledge/budget.md`.
 
 ## [0.5.4] — Unreleased (pending directory review)
 

@@ -183,6 +183,75 @@ All restricted content, products, and services must comply with additional restr
 - Use **Gen AI AdMaker** — improves approval rate by approximately 50% due to built-in policies.
 - Ensure ads avoid mature themes, distasteful imagery, aggressive promises, or close-ups of body parts.
 
+### Reading why something was rejected
+
+`get_campaign`, `list_campaigns`, `get_item` and `list_items` each return a read-only
+**`policy_review`** object next to `approval_state`. It is normally present on a rejected object; when
+it is not, say the reason was not returned rather than supplying one.
+
+**A campaign and an item do not carry the same fields.**
+
+| Field | Campaign | Item | Carries |
+|---|---|---|---|
+| `reject_reason` | yes | yes | The policy code. **Internal — never show it to the user.** |
+| `reject_reason_description` | yes | yes | The reason in readable form. This is the line to show the user. |
+| `reviewer_notes` | always null | yes | A reviewer's written explanation when one exists — often names the exact fix |
+| `policy_review.status_reason` | no | yes | The **Need To Edit** reason when the item is in that state (`DUPLICATE`, `NO_TITLE`, `NO_THUMBNAIL`, `NO_URL`, `TIMEOUT`, `IMAGE_WITHOUT_LICENSE`); null otherwise |
+
+**Reviewer notes are only ever populated on items** (verified against the platform source 2026-11-03: the campaign serializer sets the two reason fields and nothing else). A campaign-level rejection gives you a reason and no note — if the user needs the detail, it is on the items, via `list_items`. Note an item also has a **top-level** `status_reason` that is a different field with a different set of values; the one above is the one inside `policy_review`.
+
+**Never report a rejection without its reason.** "This item is rejected" alone leaves the user to
+guess, and the answer is already in the payload in hand — there is no second call to make.
+
+**And a rejection is not the end of the ad.** Editing a rejected ad resubmits it for review, so the
+reason is something to act on, not just to report. Offer the fix. The ad will not go live on that
+write — it goes back into review — and some accounts limit how many times one ad can be resubmitted,
+so a replacement is the fallback once that limit is reached.
+
+- **`reviewer_notes` is null on most rejected objects, and is the user's own text to act on when it is not** — quote it, never compress it. Report what carries a value; say the reviewer left no note rather than reading one out of the
+  code name. If `policy_review` is absent on something that reads `REJECTED`, or present with every
+  field null, say the reason was not returned — there is no second call that fetches it, and the
+  status is not a reason.
+- **The description is canned text for the code, not a report on this campaign.** It is looked up
+  from a table, one fixed sentence per code, so quote it as given but **never read it as a list of
+  this campaign's actual faults**. `CAMPAIGN_SUBMISSION_ERROR`, for instance, carries a stock sentence naming two
+  possible causes — "Broken landing page URL; No items in campaign" — and telling the user they have
+  both is asserting defects the platform never recorded. Say what the code means and let them check
+  which applies.
+- **A code with no description of its own falls back to the platform's default text**, which may be
+  a stock sentence or may be nothing at all. Either way it does not describe this rejection, so say
+  the reason was not given rather than reading the fallback out as the finding.
+
+A campaign payload usually also carries **`inventory_summary`** (`number_of_items`,
+`number_of_approved_items`, `number_of_reject_items`). Useful, with four limits worth knowing:
+
+- **Approved is not running.** An approved-but-paused ad counts as approved. To say a campaign is
+  partly live rather than merely partly approved, read item `status` from `list_items`.
+- **There is no pending count.** Pending is total minus approved minus rejected.
+- **It can be missing entirely** on credentials without the inventory-summary permission.
+- **`0 / 0 / 0` does not mean "no ads", and `list_items` will not settle it.** The count covers the campaign's own
+  attached ad rows once they are fully registered — an ad awaiting approval *is* counted, a deleted one is not — and the
+  zeros are *substituted* when there are none, so the field is present and reads zero rather than going absent. Three
+  kinds of campaign read zero while perfectly healthy:
+  - a **catalog** campaign, whose products are not ad rows at all, reads zero for its whole life;
+  - a campaign whose ads are **still being crawled**: a newly added ad is not counted until its crawl resolves, so a
+    campaign set up minutes ago reads zero. (On accounts with the creative library switched on a new ad is registered
+    immediately, so that gap does not arise there.)
+  - an **RSS** campaign reads zero until its feed is first read; after that its generated ads are counted.
+
+  An ad placed from the **creative library** is an ordinary attached ad, counted from the start, so a library campaign
+  reading zero really is empty. **No field on the campaign payload separates any of these from a genuinely empty
+  campaign** — `campaign_item_type` looks like it should, but it is a one-way latch set on the first ad and never reset,
+  so all of them sit on one of the `HAS_NO_ITEMS*` values (there is one per ad format, so test the prefix, not the bare
+  `HAS_NO_ITEMS`). `list_items` does not resolve it either: it returns nothing at all for a catalog campaign, and on an
+  RSS campaign it lists the feed while hiding the generated ads, so `number_of_items` there can far exceed the rows
+  `list_items` returns — that gap is by design, not a bug. So never call a campaign empty on a `0 / 0 / 0`: say it has no
+  counted ads, and ask whether it runs on a product catalog or an RSS feed, or was only just set up. The user knows;
+  nothing in the payload does. A **non-zero** total with `number_of_approved_items: 0` is the trustworthy case — there,
+  nothing really is approved. (Counting query, crawl path and the library and RSS paths verified against platform source
+  2026-11-04; the catalog case is inferred from catalog ads living outside the counted table, not from a line that
+  states it.)
+
 ---
 
 ## Creative Testing & Refresh

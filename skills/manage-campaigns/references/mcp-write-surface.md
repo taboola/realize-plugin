@@ -12,9 +12,9 @@ Required fields on every create call:
 |---|---|---|
 | `account_id` | string | The opaque account identifier from `search_accounts` — NOT the numeric `id`. Pass through verbatim; don't reformat. |
 | `name` | string | Internal campaign name. See `knowledge/campaign-structure.md` for grouping + objective rules; no platform-imposed naming convention. |
-| `marketing_objective` | enum | One of: `BRAND_AWARENESS`, `DRIVE_WEBSITE_TRAFFIC`, `LEADS_GENERATION`, `ONLINE_PURCHASES`, `MOBILE_APP_INSTALL`. Locked at create — cannot be changed via `update_campaign`. |
+| `marketing_objective` | enum | One of: `BRAND_AWARENESS`, `DRIVE_WEBSITE_TRAFFIC`, `LEADS_GENERATION`, `ONLINE_PURCHASES`, `MOBILE_APP_INSTALL`. Required on every create. **Also editable on update** — `update_campaign` accepts it and the API has no read-only check on it for campaigns — but the write can still be refused three ways: without the edit permission it returns 403; a switch to `DRIVE_WEBSITE_TRAFFIC` or `BRAND_AWARENESS` is rejected while `bid_strategy` is `TARGET_CPA`, so the objective and the bid strategy often have to change in one call; and the tool's own text warns that some transitions are refused mid-flight — a claim with no platform check behind it, unlike the first two. Preview it as a change that may be refused, not as a certainty, and never as a re-create. (The read-only-unless-enabled rule belongs to campaign *groups*, not campaigns — see §3c. First two causes and the group rule verified against platform source 2026-11-04; the third is the tool's own text.) |
 | `branding_text` | string | Shown publicly under each item. Use the brand name or product line. |
-| `spending_limit_model` | enum | One of `NONE`, `MONTHLY`, `ENTIRE`. Use `NONE` + `daily_cap` + `daily_ad_delivery_model="STRICT"` for a daily cap. Use `MONTHLY` or `ENTIRE` + `spending_limit` for monthly cap / lifetime (flight total). |
+| `spending_limit_model` | enum | One of `NONE`, `MONTHLY`, `ENTIRE`. Omit all four omittable budget fields (named under *Campaign groups and the budget they own*, below in this section) in a managed-budget group — anything but `CUSTOM`. Otherwise use `NONE` + `daily_cap` + `daily_ad_delivery_model="STRICT"` for a daily cap. Use `MONTHLY` or `ENTIRE` + `spending_limit` for monthly cap / lifetime (flight total). **Required only when `campaign_group_id` is absent.** With a group set, it must be **omitted entirely** in any managed-budget group — `FULLY_SHARED` and `AUTOMATIC` / `CPA_BASED_ALLOCATION` alike, not just `AUTOMATIC` — and omitting it there is safe: the campaign carries no budget of its own; the group owns and paces it. In a `CUSTOM` group it is optional, but **optional is not harmless**: omit it and the campaign inherits the group's whole budget as its own limit. See *Campaign groups and the budget they own*, below in this section. (Platform source, checked 2026-11-04; the tool text scopes this to `AUTOMATIC` only.) |
 | `bid_strategy` | enum | One of: `MAX_CONVERSIONS`, `TARGET_CPA`, `MAX_VALUE`, `SMART` (= Enhanced CPC in UI), `FIXED`. See Section 4 for the per-strategy field-gate matrix. |
 
 Optional but commonly-set scalars:
@@ -26,14 +26,37 @@ Optional but commonly-set scalars:
 | `cpc` | currency | Bid. **Valid only on `bid_strategy=SMART` (Enhanced CPC) or `bid_strategy=FIXED`.** Reject the payload on `TARGET_CPA` / `MAX_CONVERSIONS` / `MAX_VALUE`. |
 | `cpa_goal` | currency | Target CPA. **ONLY valid when `bid_strategy=TARGET_CPA`.** Reject otherwise. |
 | `cpc_cap` | currency | Optional ceiling on per-click cost. **Valid only on `bid_strategy=MAX_CONVERSIONS`** (last-resort lever; sending it on `TARGET_CPA` / `MAX_VALUE` / `SMART` / `FIXED` returns API 400). See `knowledge/bidding.md` "Bid Ceiling for Maximize Conversions". |
-| `roasGoal` (NOT writable via MCP) | number | Target ROAS multiple for `MAX_VALUE`. **Update-only**, **DCO accounts only**, and **not currently exposed by the MCP** — cannot be set on `create_campaign` or `update_campaign`. Set in the Realize UI after creation. |
+| `roasGoal` (not set here) | number | Target ROAS multiple for `MAX_VALUE`. **Update-only** and **DCO accounts only**. **This plugin does not set it** — don't send it on `create_campaign` or `update_campaign`; it is set on the Realize screen after creation. |
 | `start_date`, `end_date` | ISO date | Flight dates. Optional `end_date` means always-on. |
 | `tracking_code` | string | UTM scheme / tracking parameters appended to outbound URLs. |
 | `comments` | string | Internal notes — link to source plan / ticket. |
 | `daily_ad_delivery_model` | enum | `BALANCED` (default — smooths spend across the day; forbids `daily_cap`) / `STRICT` (tight daily pacing; **required when `daily_cap` is set**). Matches `skills/manage-campaigns/SKILL.md`. |
 | `traffic_allocation_mode` | enum | Defaults to algorithm-driven. |
 | `pricing_model` | enum | `CPC` (standard) or `VCPM` (Display only — locks campaign as Display at create time). See `knowledge/creative.md` for the two-path Native-vs-Display lock-in rule. |
-| `is_active` | boolean | **Always `false` on initial create.** Flipped to `true` only after the activation gate (see SKILL.md Step 6). |
+| `is_active` | boolean | **Always `false` on initial create.** Flipped to `true` only after the activation gate (see *Create-with-launch flow* in SKILL.md). |
+| `campaign_group_id` | string | Places the new campaign in that group — id from `get_campaign_groups`, sent as a string even though `get_campaign` returns it as a number. **Read the group first:** its dates bound the campaign's (omitted dates take the group's), and how its budget is split decides whether you may send budget fields at all — see the next section. With `campaign_group_id` set, `spending_limit_model` stops being required. |
+
+### Campaign groups and the budget they own
+
+A group's `budget_distribution_method` decides who owns the budget, and getting it wrong is a rejected call, not a warning. Read the group before any create-into-group or budget change on a campaign in one.
+
+| `budget_distribution_method` | What it means | What the campaign may send |
+|---|---|---|
+| `CUSTOM` (the default) | Manual — each campaign keeps its own budget; nothing is auto-allocated. | Its own `spending_limit_model` / `spending_limit` / `daily_cap` / `daily_ad_delivery_model`, as normal — but **omitting them on create does not mean "no budget"**, see the note below the table. Also the only kind of group `update_campaign` can attach a campaign to. |
+| `FULLY_SHARED` | The group's budget is shared across its campaigns. A read-only value — writes take `CUSTOM` or `AUTOMATIC` — but an existing group can be on it. Like `AUTOMATIC`, it needs a **limited** group budget and rejects an unlimited one. | **None of the four omittable budget fields** (below). No bid-strategy constraint: `MAX_CONVERSIONS` is **not** required here, unlike `AUTOMATIC`. |
+| `AUTOMATIC` | Taboola allocates the group's budget across its campaigns. The group needs a **limited** budget — an unlimited one is rejected. Unlimited means all four at once: `NONE`, no `spending_limit`, no `daily_cap` and no `daily_ad_delivery_model`. Any one of them present makes it limited, so `NONE` with a `daily_cap` is fine. **Pacing alone does not work**: `NONE` with `daily_ad_delivery_model` and no cap counts as limited and is then rejected for the missing cap, so give the group a `daily_cap` or a `spending_limit`. Not every account may select it — two separate account settings must both be on, and the call is rejected with a different message for each. | **None of the four omittable budget fields** (below) — the group owns them and the API rejects them. A campaign here is also **rejected on any bid strategy but `MAX_CONVERSIONS`** — required, not recommended, whatever the public docs and the tool text say. The same is true of a group reading back `CPA_BASED_ALLOCATION`, which is the same group kind under its stored name. The rule, and the account setting and group allow-list that each lift it on their own, live in `knowledge/campaign-structure.md` → *Budget Distributor Behaviour*. |
+
+**In a `CUSTOM` group, omitting the budget fields on create is not "no budget".** If the group's own budget is limited, it copies the group's budget onto the campaign **in full and undivided** — the group's monthly limit if it has one, otherwise its lifetime total, plus the group's daily cap and pacing. Some groups carry only a cap and no overall limit; the campaign then inherits the cap and no total, so read the group and say what the campaign actually ends up with rather than promising an amount that may not exist. A campaign the user pictured as small is then created able to spend the whole group budget, so name the budget it will carry, in money, in the preview. If the group's budget is unlimited instead, the same omission is rejected for a missing `daily_ad_delivery_model`. And sending **any one** of the four makes `daily_ad_delivery_model` and `spending_limit_model` both required, though §1 lists them as optional once a group is set. The safe shapes are: omit all four, having first read the group's budget and said what the campaign will carry; or send a complete budget — `spending_limit_model` and `daily_ad_delivery_model` always, `daily_cap` with `STRICT` pacing, and `spending_limit` **only** with `MONTHLY` or `ENTIRE` — sent alongside `NONE` it is ignored at best, and under `STRICT` pacing the call is rejected outright. (Platform source, checked 2026-11-04; the tool text describes none of this.)
+
+**The four budget fields you must omit** in a managed group are `spending_limit_model`, `spending_limit`, `daily_cap` and `daily_ad_delivery_model`. They lock in **any** managed group — `FULLY_SHARED` and `AUTOMATIC` / `CPA_BASED_ALLOCATION` alike — not only `AUTOMATIC`. Omitting them is safe rather than rejected: the campaign carries no budget of its own; the group owns and paces it. (The platform locks a fifth, `budget_additional_parameters.pace_ahead_factor`, but no tool here can send it, so it is not yours to omit.)
+
+**Read the group per `knowledge/campaign-structure.md` → *Reading a campaign group*** — by id, which returns the budget fields. If `budget_distribution_method` is still absent afterwards, do **not** infer `CUSTOM`: say the group's budget setup could not be confirmed, and do not preview a campaign budget write.
+
+**Write takes two values; a read can return four, and only `CUSTOM` leaves the budget on the campaign.** The full set of values, which of them mean the group owns the budget, and the evidence behind that are in `knowledge/campaign-structure.md` → *Campaign Groups*; the table above covers only what a campaign may send under each budget-distribution value. What matters when composing a write: treat any value other than `CUSTOM`, including one you do not recognise, as managed; if the field is absent after a by-id read, say the budget setup could not be read rather than assuming `CUSTOM`. Setting the field belongs to the campaign-group write tools in §3c, through the same preview-then-confirm gate, and the raw value never reaches the user — `os/guardrails.md` has the plain-English phrasing.
+
+So *"raise the daily budget on campaign 12345"* is not always a campaign-level write: if 12345 sits in a managed-budget group, the budget lives on the group, so the write is `update_campaign_group` (§3c), not `update_campaign` — which would be rejected. Say where the budget actually lives, and that changing it there reaches every campaign in the group, before previewing anything.
+
+**Attach is not move.** On `update_campaign`, `campaign_group_id` can only attach a campaign that is currently in **no** group, and only to a `CUSTOM`-budget group. Moving a campaign between groups, or removing it from one, has no MCP tool — that is a UI action. Never present an attach preview for a campaign that already has a `campaign_group_id`. **Two per-account settings gate it, both off by default, and they fail differently:** one refuses the call; the other lets the attach land **unvalidated** — the group is not checked for existing or for belonging to this account, and the budget-field and bid-strategy checks never run. The `CUSTOM`-only rule still holds either way. So never promise an attach will land, and read the campaign back rather than trusting a clean response (verified against the platform source 2026-11-03).
 
 ## 2. Targeting blocks on `create_campaign`
 
@@ -47,7 +70,7 @@ All optional; populate where the request specifies. Item-level targeting does no
 |---|---|---|
 | `country_targeting` | `{type: INCLUDE|EXCLUDE|ALL, value: [ISO-2 codes]}` | `search_geos(dimension=countries)` |
 | `region_country_targeting` | `{type: INCLUDE|EXCLUDE|ALL, value: [region IDs]}` | `search_geos(dimension=regions)` |
-| `dma_country_targeting` | `{type: INCLUDE|EXCLUDE|ALL, value: [DMA codes]}` | `search_geos(dimension=dmas)` |
+| `dma_country_targeting` | `{type: INCLUDE|EXCLUDE|ALL, value: [DMA codes]}` | `search_geos(dimension=dma)` |
 | `city_targeting` | `{type: INCLUDE|EXCLUDE|ALL, value: [city IDs]}` | `search_geos(dimension=cities)` |
 | `postal_code_targeting` | `{type: INCLUDE|EXCLUDE|ALL, value: [postal codes]}` | `search_geos(dimension=postal_codes)` |
 
@@ -118,7 +141,7 @@ All optional; populate where the request specifies. Item-level targeting does no
 Same field shapes as the create tools. Use to:
 
 - **Pause an item:** `update_*_item(is_active=false)`.
-- **Activate an item:** `update_*_item(is_active=true)`.
+- **Activate an item:** `update_*_item(is_active=true)` — not available on a rejected ad; fix it first and let it clear review.
 - **Swap creative content:** edit `title` / `description` / `thumbnail_url` / `ad_tag` etc.
 - **Update landing page:** edit `url`.
 
@@ -139,13 +162,15 @@ Use to edit any campaign field after creation. Common patterns:
 | Tighten or broaden targeting | the relevant targeting block (`country_targeting`, `platform_targeting`, etc.) |
 | Add a Target CPA on a Maximize Conversions campaign | switch `bid_strategy=TARGET_CPA` + set `cpa_goal`. **Last-resort lever** per `knowledge/bidding.md`; never at launch, never aspirational. |
 | Add / change tracking | `tracking_code` |
+| Set or change the campaign's conversion goal | `conversion_rules`. **This REPLACES whatever the campaign inherits from its Campaign Group — it is not added to it.** If the campaign is in a group, read the group first and show both sides in the preview: the rules it inherits today, and the campaign-only set it will have afterwards. A user who says "my campaign has no conversion goal" may simply be inheriting one; correct the premise before writing. |
+| Put an ungrouped campaign into a group | `campaign_group_id` (string). **Attach only**, and only when the campaign has no `campaign_group_id` today and the target group's `budget_distribution_method` is `CUSTOM`. Read both the campaign and the group first. |
 
 Fields that CANNOT be changed after create:
 
-- `marketing_objective` — re-create the campaign instead.
 - `pricing_model` — re-create the campaign instead.
 - Campaign type (Native vs Display) — derived from `pricing_model` + first attached item; locked at create. Re-create instead.
 - `account_id` — never move a campaign between accounts.
+- `campaign_group_id` **once it is set** — the MCP can attach an ungrouped campaign to a group, but cannot move it to another group or detach it. That is a Realize UI action.
 
 ## 3b. Account-level write tools — `create_conversion_rule` / `update_conversion_rule`
 
@@ -169,6 +194,72 @@ Field reference for the two account-scoped writes. The workflow, tiers, and acco
 
 Read-only fields the update tool rejects as unknown parameters: `id`, `advertiser_id`, `pixel_id`, `exclude_from_campaigns`, `external_id`, `partner`, `tracked_elements`.
 
+## 3c. Campaign-group write tools — `create_campaign_group` / `update_campaign_group`
+
+The workflow lives in `SKILL.md` → *Creating or updating a campaign group*, and the preview tiers in *Confirmation pattern (tiered)*; this section carries the shapes, the units and the traps. The mandatory pre-read is in `knowledge/campaign-structure.md` → *Reading a campaign group*.
+
+Both are **closed schemas** (`additionalProperties: false`), unlike the campaign and item writes: a misspelled field is rejected rather than silently dropped. `update_campaign_group` is a **partial merge** — omit a field and it keeps its stored value. That is the tool's doing, not the API's: it re-sends the attribution windows and budget schedule the API would otherwise clear. Send only what is changing, and never echo a `get_campaign_groups` payload back.
+
+| Tool | Required |
+|---|---|
+| `create_campaign_group` | `account_id`, `name`, `spending_limit_model` — the budget period is required even when the split is `CUSTOM` |
+| `update_campaign_group` | `account_id`, `campaign_group_id` |
+
+**Fields the API manages itself cannot be set**: `status`, `bid_strategy`, `cpa_goal`, `language`.
+
+| Field | Values | Notes |
+|---|---|---|
+| `account_id` | string | **The owning advertiser** — `search_accounts.account_id`, or a campaign's `advertiser_id`. Never numeric, and never a parent or network account: the group belongs to the advertiser its campaigns do. |
+| `name` | string | Group name. **Unique within the account, and the platform enforces it** — a create or rename that collides returns a 400 quoting the name back. It does not tell you which group holds it, so look that up yourself before answering the user. A **deleted** group keeps its name reserved, and the default listing hides deleted groups, so a collision you cannot see in a normal listing is the confusing case: re-query with `statuses=["TERMINATED"]` before telling the user the name is free. Still resolve a group by id rather than by name — uniqueness makes a name lookup *possible*, not reliable, since the name can change under you. (Platform source, checked 2026-11-04; the tool text says nothing about uniqueness.) |
+| `marketing_objective` + `kpi` | see *Objective → KPI* below — the objective is **read-only unless a per-account flag is on, and it defaults to off** — so on most accounts sending it at all is rejected, and on an account where it is editable it becomes **required** on create. On an update, read the group first; on a create there is nothing to read, so say up front the objective may be refused. Either way, do not promise the change | **On create they travel together — send both or neither.** The tool rejects a lone objective. On update, send both whenever you change either, rather than trusting the stored one to still pair. |
+| `kpi_data` | `{kpi_threshold_value, kpi_goal_value}` | **The field names do not mean what they say.** `kpi_threshold_value` is *"increase spend if CPA is **below** this"*; `kpi_goal_value` is *"reduce spend if CPA is **above** this"*. Both in account currency, both > 0. Feeds recommendations only, and only when `kpi` is CPA **and both are set** — it is not a Target CPA. |
+| `conversion_rules` | `{rules: [{id}]}` | Two choices, as in the UI. **Account default:** omit on create, or send `{rules: []}` on update. **Manual:** ACTIVE rule ids from `get_conversion_rules`, and each `id` is an **integer** here — unlike `campaign_group_id`, which is a string. On update, omitting the field keeps the group's current rules. These apply to every campaign in the group that sets none of its own. |
+| `group_type` *(read-only, not in the tool schema)* | `ORDER_ID` / `SHARED_BUDGET` / `REPRESENTATIVES` | The **kind** of grouping, not a statement about the budget, and the two are independent. Every campaign group created on a campaign-groups account is set to `SHARED_BUDGET` whatever its `budget_distribution_method` is, so `SHARED_BUDGET` alongside `CUSTOM` is the ordinary case and not a conflict. The other two values are legacy groupings. **Decide budget ownership from `budget_distribution_method` alone.** |
+| `budget_distribution_method` | `CUSTOM` or `AUTOMATIC` on write; a read can return more — `knowledge/campaign-structure.md` → *Campaign Groups* lists them | `CUSTOM` (the default) leaves each campaign its own budget; every other value is **managed budget**, where Taboola allocates the group's money and the member campaigns' budget fields are read-only. A managed group needs a **limited** budget, so an unlimited one is rejected — `NONE` with no daily cap and no limit at all. `NONE` plus a `daily_cap` is fine. |
+| `spending_limit_model` | `NONE` / `MONTHLY` / `ENTIRE` | Required on create. `MONTHLY` / `ENTIRE` take `spending_limit`. **`NONE` on its own is valid** — that is the unlimited group budget, and it is accepted on a `CUSTOM` split (a managed split rejects it, see the row above). The daily-cap requirement is **conditional**: once you send any one of `spending_limit`, `daily_cap` or `daily_ad_delivery_model` alongside `NONE`, the budget is no longer unlimited and a `daily_cap` becomes mandatory. So send `NONE` alone, or `NONE` with a cap — never `NONE` with pacing and no cap. (Platform source, checked 2026-11-04; the tool text requires the cap unconditionally.) |
+| `spending_limit` | number | For the chosen period, in account currency. |
+| `daily_cap` | number | Works only with `STRICT` pacing. Send a cap with `BALANCED` and the tool keeps the cap, switches to `STRICT`, and says so in the response. **Send `0` only on its own.** The tool reads `0` as "no cap" and stores it as none; paired with `STRICT` pacing the two contradict each other, and Realize rejects a non-positive cap when pacing is also sent. Omit the field rather than sending 0 with pacing. |
+| `daily_ad_delivery_model` | `BALANCED` / `STRICT` | `BALANCED` is the default and allows no cap — switching to it **clears** the group's cap. Switching an already-capped group to `STRICT` re-sends that cap. A new group defaults to `BALANCED`, so a create carrying `daily_cap` flips to `STRICT`. |
+| `conversion_configuration` | object *(read-only — not in either tool's schema, and both are closed, so sending it is rejected)* | The group's attribution window — how long after a click or a view a conversion still counts. **Only a by-id read returns it**; the listing leaves it null. `update_campaign_group` re-sends the stored value for you when you omit it, so a partial update does not clear it — but never echo a read payload back. |
+| `start_date` / `end_date` | `yyyy-MM-dd` | Start defaults to today on create; omit `end_date` for no end. Campaigns in the group must start on or after, and end on or before. |
+| `is_active` | boolean | `false` pauses **the whole group**, `true` resumes it. |
+
+#### Objective → KPI
+
+**The pairing is the MCP tool's rule, not the platform's.** The platform's own KPI enum is flat — eight values with no objective attached — and no objective-to-KPI map appears anywhere in its validation path, so Realize would accept any pair sent to it. The tool is what refuses, with an input error, and the flat eight-value `kpi` enum in the JSON schema will not catch a bad pair on its own. **The allowed pairs are in the tool's own description**, which upstream generates from the same table its validator raises on, so that text cannot fall out of step with the behaviour. Read them there; a copy here could only drift out of agreement with it. Send both or neither, and when you are unsure of a pair, say so rather than guessing — the tool's error names the valid options.
+
+**What the preview must say, beyond the field diff.** A group write is not scoped to one object:
+
+- Changing `budget_distribution_method`, or the budget of a shared group, **updates every campaign in the group**, and switching to `AUTOMATIC` does two things, not one:
+  - it takes budget control away from each campaign — their own budget fields stop applying and the API rejects them from then on; and
+  - **it rewrites every member campaign's bid strategy to Maximize Conversions.** Realize does this silently as part of the switch, on every campaign in the group — paused, pending and rejected members included; only deleted ones are skipped. It is skipped in exactly three cases. One you can check: the group was **already** on the automatic split, which the by-id read tells you. Two you cannot: the group id is on a global allow-list (empty by default), or the account has **both** bid-strategy opt-out settings on (both off by default). Only the automatic split rewrites bid strategies. A group already on `FULLY_SHARED` rewrites member **budgets** the same way whenever its budget changes, so a shared group is not the safer one — but you cannot switch a group *to* `FULLY_SHARED` from here: the write enum is `CUSTOM` and `AUTOMATIC` only. **The preview must say the rewrite will happen** — state it plainly, before the confirm. Afterwards is where the caution belongs: do not report that it did or did not happen without re-reading the members. A user approving what looks like a budget change must not discover afterwards that every campaign's bidding changed with it.
+- **Going back to `CUSTOM` does not undo either.** The group's former budget is split **equally** across its campaigns rather than restored to what each had, and bid strategies are not restored at all. Treat the switch as one-way and say so.
+- **Changing the group's `start_date` can move every member campaign that started earlier** to the new date. This is behind a platform-wide setting that is off by default, so do not promise it either way — name it as a possible side effect and check the campaigns afterwards.
+- **Changing `conversion_rules` changes what every campaign in the group optimizes toward** — every member that has no rules of its own, which is usually most of them. The preview must say that, in the same breath as the new goal. It is the group write most likely to be read as a small edit.
+- `is_active: false` pauses every campaign in the group.
+- A group on the **Realize+ beta** (`REALIZE_PLUS`) cannot change `marketing_objective`, `kpi`, `kpi_data` or `budget_distribution_method` — see `knowledge/campaign-structure.md` → *Realize+ beta context*.
+- **There is no delete.** Deleting a group terminates all its campaigns, so the supported retirement is `is_active: false`.
+- **The response reports anything the tool changed about the request** — the `BALANCED`-plus-cap case above is the common one. Read it back and tell the user what actually landed, rather than repeating the payload you sent.
+
+Read the group first with `get_campaign_groups` — by id, per `knowledge/campaign-structure.md` → *Reading a campaign group* — so the preview shows real current values rather than blanks.
+
+**Counting what it reaches.** No tool lists a group's members — the procedure, and what to say when the account is too large to count, is in `SKILL.md` → *Creating or updating a campaign group*, step 3.
+
+**Say it in the user's words, not the API's.** Field names and enum values do not go in a preview — `os/guardrails.md` carries the approved plain-English phrasing for `budget_distribution_method`, and the same rule applies to every row above. A group preview reads like this:
+
+```
+▶ WRITE TARGET: Acme Retail (advertiser_12345_prod)
+
+Pause campaign group "Q4 Prospecting"
+
+This stops all 7 campaigns in the group. None of them will deliver
+while the group is paused. Their own settings are not changed.
+
+Proceed?
+```
+
+Not: `is_active: true → false on campaign_group_id 778`.
+
 ## 4. Per-strategy bid-lever gate matrix
 
 The canonical matrix lives in `knowledge/bidding.md` ("Bid Levers — What's Possible at Each Level"). Quick reference for write payloads:
@@ -187,7 +278,7 @@ The canonical matrix lives in `knowledge/bidding.md` ("Bid Levers — What's Pos
 | **Item-level create / edit** | ✅ | ✅ | ✅ | ✅ |
 | **Day-parting** (`activity_schedule`) | ✅ | ✅ | ✅ | ✅ |
 
-> **Target ROAS (`roasGoal`)** intentionally has no row in this matrix because it is **not exposed via the MCP** (update-only, DCO accounts only — see scalar field table). If a user asks to set ROAS, refuse the write and route them to the Realize UI.
+> **Target ROAS (`roasGoal`)** intentionally has no row in this matrix because **this plugin does not set it** (update-only, DCO accounts only — see scalar field table). If a user asks to set ROAS, say it isn't something you do here and point at the Realize screen.
 
 **Refuse and reframe** any payload that violates the matrix:
 
@@ -271,7 +362,7 @@ create_campaign(
 )
 ```
 
-> ROAS target (`roasGoal` in the API) is **update-only**, **DCO accounts only**, and **not currently exposed by the MCP**. It cannot be set on `create_campaign`. If a user asks to set ROAS, fall back to the Realize UI.
+> ROAS target (`roasGoal` in the API) is **update-only** and **DCO accounts only**, and **this plugin does not set it**. Don't send it on `create_campaign`. If a user asks to set ROAS, say it isn't something you do here and point at the Realize screen.
 
 ### Enhanced CPC (SMART) with per-publisher bid modifiers
 
@@ -342,13 +433,14 @@ update_campaign(
 | `400 Unsupported tag` from `create_display_item` | 3P vendor not configured for this account — cannot self-correct | Route the user to their Account Manager (or `support@taboola.com`) for vendor enablement. **Do not retry**; do not strip the wrapper (it won't help). |
 | `400 Invalid html tag structure` from `create_display_item` | Markup is wrapped or malformed | Strip everything before the first ad-tag element (no `<!DOCTYPE>`, no `<html>` / `<body>` / `<div>`, no leading whitespace), then retry. |
 | `create_campaign` rejected — "conversion rule required" | Performance objective without an attached rule | Attach an existing rule (`get_conversion_rules`), create one (`create_conversion_rule`, through the write gate), or stage with a placeholder per `knowledge/bidding.md` "When the conversion rule isn't ready yet" recipe. |
+| `create_campaign_group` / `update_campaign_group` rejected — "the Group Name … already exists" | Group names are unique per account, and a **deleted** group keeps its name reserved | Re-query with `search_text`, then with `statuses=["TERMINATED"]`; name the group holding it, say whether it is deleted, and ask for another name |
 | `create_conversion_rule` rejected — duplicate event | An ACTIVE rule already holds that `event_name` | Update the incumbent instead. Do **not** disable it to force the create through — that stops reporting for every campaign using it. Surface the choice to the user. |
 | `update_conversion_rule` rejected — unknown parameter | A `get_conversion_rules` payload was echoed back | Build a minimal payload of only the changed fields. `id`, `advertiser_id`, `pixel_id`, `exclude_from_campaigns`, `external_id`, `partner`, `tracked_elements` have no parameter on the update tool. |
 | `update_conversion_rule` returns READONLY, naming `eventName` | An immutable field changed — `type`, `category`, or `event_name` | The error may name `eventName` even when `type` was what you changed, so don't chase the named field. Resending an immutable field *unchanged* is fine; changing it requires a new rule. |
 | `get_conversion_rules` fails with a tool-result overflow error and a file path | A single page was still too large for the tool-result cap on a rule-heavy / NETWORK account (observed 278 rules / ~270 KB unfiltered) | **Lower `page_size` (max 50) and retry** — that is the first fix now that the read is paginated. If it still overflows, read the dumped file in slices (or search it with the `Grep` tool) and run the collision + ownership checks against it. Do not retry unmodified at the same `page_size`, do not skip the pre-read, do not treat the overflow as "no rules". |
 | Item creation succeeds but item shows wrong campaign type in UI | Created a Native item on a campaign destined for Display (or vice versa) | Item locks campaign type irreversibly. Pause the wrong-type campaign and create a fresh one with the intended type. See `knowledge/creative.md` "If a Native campaign was created by mistake when Display was wanted". |
 | `cpc` field accepted but ignored on Maximize Conversions / Target CPA / Maximize Value | The algorithm sets the bid on fully-automated strategies — `cpc` is silently dropped | Don't set `cpc` on these strategies. If a ceiling is needed, use `cpc_cap` (last-resort). |
-| `update_campaign` rejected with "marketing objective cannot change" | Trying to switch objective on a live campaign | Create a new campaign instead. Objective is locked at create. |
+| `update_campaign` rejected on `marketing_objective` | One of three things, none of them "locked at create" | A campaign's objective **is** editable. Check, in order: the credentials lack the edit permission (403); the new objective is `DRIVE_WEBSITE_TRAFFIC` or `BRAND_AWARENESS` while `bid_strategy` is `TARGET_CPA`, which is refused — send both in one call; or the tool's own description warns that some transitions are refused mid-flight — no platform check backs that one, so treat it as the tool's claim rather than a known rule. Never answer with a re-create. |
 | Server-side crawl returns wrong creative for a Native item | Supplied `url` differs from the canonical page, or the page is JS-rendered without server-side meta | Supply `title` + `description` + `thumbnail_url` explicitly rather than relying on crawl. |
 
 ## 8. Cross-references

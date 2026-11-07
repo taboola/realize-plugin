@@ -93,7 +93,7 @@ Then retry the OAuth flow. This forces the port-3000 redirect the Taboola auth s
 
 ## Optional: opt in to skip the permission prompt for write tools
 
-By default, the first call to each of the 8 Realize write tools (`create_campaign`, `update_campaign`, `create_native_item`, `update_native_item`, `create_display_item`, `update_display_item`, `create_conversion_rule`, `update_conversion_rule`) triggers a Claude Code permission prompt. This is **defense in depth on top of** the plugin's own preview-then-confirm gate (see [`os/guardrails.md`](os/guardrails.md) → "Write tool gate"). Both checks are recommended.
+By default, the first call to each of the 10 Realize write tools (`create_campaign`, `update_campaign`, `create_native_item`, `update_native_item`, `create_display_item`, `update_display_item`, `create_conversion_rule`, `update_conversion_rule`, `create_campaign_group`, `update_campaign_group`) triggers a Claude Code permission prompt. This is **defense in depth on top of** the plugin's own preview-then-confirm gate (see [`os/guardrails.md`](os/guardrails.md) → "Write tool gate"). Both checks are recommended.
 
 If you want to skip the harness-level prompt locally (the plugin gate still fires on every write), copy the example file into place:
 
@@ -135,8 +135,8 @@ The Codex build wires the Realize remote MCP and loads only the focused [`realiz
 
 Two things differ from the Claude Code install:
 
-1. **Manifest name.** Codex loads `.codex-plugin/plugin.json`, where the plugin is registered as `realize-plugin`. When installing into a Codex marketplace, use `realize-plugin` as the plugin slug.
-2. **MCP URL / port.** The shared `.mcp.json` points at `https://mcp.realize.com/mcp` with OAuth callback port `3000`. The Codex build inherits this endpoint by default. Confirm with the Realize team whether your Codex deployment uses the same endpoint before installing — if Codex routes the realize-mcp differently, do not modify the shared `.mcp.json`; raise it with the Realize team for guidance on the correct override mechanism for your Codex environment.
+1. **Manifest name.** Codex loads `.codex-plugin/plugin.json`, where the plugin is registered as `realize-plugin-openai` (display name still `Realize Plugin`). When installing into a Codex marketplace, use `realize-plugin-openai` as the plugin slug. The Claude Code plugin keeps the name `realize-plugin`.
+2. **MCP URL / port.** The shared `.mcp.json` points at `https://mcp.realize.com/mcp` with OAuth callback port `3000`. The Codex build inherits this endpoint by default. Confirm with the Realize team whether your Codex deployment uses the same endpoint before installing — if Codex routes the realize-mcp differently, do not modify the shared `.mcp.json`; raise it with the Realize team for guidance on the correct override mechanism for your Codex environment. The OpenAI marketplace submission is different: it is built from the `openai-submission` branch, whose `.mcp.json` drops the `X-Realize-Client` header and the `oauth` callback port, because OpenAI configures OAuth in its portal.
 
 After install, run a read prompt the same as on Claude Code:
 
