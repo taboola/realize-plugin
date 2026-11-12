@@ -55,6 +55,58 @@ If you only want the remote Realize MCP and not the opinionated skills/agent thi
 claude mcp add --transport http --callback-port 3000 realize-mcp https://mcp.realize.com/mcp
 ```
 
+## Cursor
+
+The repo also ships a Cursor plugin package (`.cursor-plugin/`). It connects Cursor agents to the hosted Realize MCP at `https://mcp.realize.com/mcp` and brings this plugin's skills and the `realize-analyst` agent, so campaign work in Cursor follows the same guidance and the same write gate as in Claude Code.
+
+### Install
+
+The plugin is not listed on the Cursor Marketplace yet. Until it is, install it locally — see [Install on Cursor](INSTALL.md#install-on-cursor) in INSTALL.md.
+
+### MCP
+
+```json
+{
+  "mcpServers": {
+    "realize-mcp": {
+      "type": "http",
+      "url": "https://mcp.realize.com/mcp",
+      "headers": {
+        "X-Realize-Client": "realize-mcp-plugin-cursor/0.5.5"
+      }
+    }
+  }
+}
+```
+
+### What agents can do
+
+| Category | Capabilities |
+| --- | --- |
+| Accounts | Find the Realize accounts you can access |
+| Campaigns and campaign groups | Read, create, and update campaigns and campaign groups |
+| Ads | Read, create, and update Native and Display items |
+| Targeting discovery | Look up geos, devices and operating systems, audiences, lookalikes, contextual segments, publishers, time zones, and CTA types |
+| Conversion rules | Read, create, and update account-level conversion rules |
+| Performance reports | Pull performance reports as CSV |
+| Change history | Read a campaign's change log |
+
+The hosted server is the source of truth for tool names and schemas.
+
+### Setup
+
+No token to paste. On first use, Cursor opens a browser window for Realize sign-in (Taboola SSO). Requests run as the signed-in Realize user, against the accounts that user can access.
+
+### Notes
+
+- The server can write, including creating campaigns and changing budgets. This plugin always shows a preview naming the target account and waits for an explicit yes before any write.
+- The support-bundle command is not included on Cursor. If you need help, email [Support@taboola.com](mailto:Support@taboola.com).
+
+### Docs
+
+- Realize MCP: https://realize.com/mcp/
+- Install and setup: [INSTALL.md](INSTALL.md)
+
 ## Authentication
 
 - **OAuth 2.1 via Taboola SSO.** On first tool call, your default browser opens to the Taboola login page. Enter your credentials; Claude Code stores the resulting token securely.

@@ -4,6 +4,12 @@ All notable changes to this plugin will be documented here. Format loosely follo
 
 ## [Unreleased]
 
+### Added — Cursor package
+
+- **Cursor plugin package** (`.cursor-plugin/plugin.json`, `.cursor-plugin/mcp.json`, plus a listing logo). It loads the Realize MCP, the `realize-analyst` agent and every skill except `support`. The Claude Code and Codex packages are unchanged.
+- **`support` is not included on Cursor.** It reads Claude Code session files, and on Cursor its fallback could package an unrelated Claude Code conversation. Cursor users email Support@taboola.com directly (INSTALL.md → *Install on Cursor*).
+- README and INSTALL.md gain Cursor sections.
+
 ### Changed
 - **Codex package renamed to `realize-plugin-openai`.** `name` in `.codex-plugin/plugin.json` changed from `realize-plugin` to `realize-plugin-openai`, as OpenAI's marketplace review asked: the new name is uploaded as a new plugin so it doesn't inherit the old draft's configuration issue. The display name stays `Realize Plugin`. The Claude Code plugin keeps the name `realize-plugin`.
 - **Codex subtitle shortened** to "Manage Realize campaigns" to fit OpenAI's 30-character `shortDescription` limit.
