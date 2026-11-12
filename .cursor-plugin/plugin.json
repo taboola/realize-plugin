@@ -1,0 +1,41 @@
+{
+  "name": "realize-plugin",
+  "displayName": "Realize Plugin",
+  "version": "0.5.5",
+  "minClientVersions": {
+    "cursor": "3.13.0"
+  },
+  "description": "Query Realize campaigns and campaign groups, pull performance reports, and create/update campaigns, ad items, and conversion rules through natural language — powered by the Realize remote MCP.",
+  "author": {
+    "name": "Taboola"
+  },
+  "publisher": "Taboola",
+  "homepage": "https://github.com/taboola/realize-claude-plugin",
+  "repository": "https://github.com/taboola/realize-claude-plugin",
+  "license": "Apache-2.0",
+  "logo": "assets/logo.png",
+  "keywords": [
+    "taboola",
+    "realize",
+    "advertising",
+    "campaigns",
+    "reporting",
+    "mcp",
+    "analytics"
+  ],
+  "category": "integrations",
+  "tags": ["taboola", "realize", "advertising", "mcp"],
+  "skills": [
+    "./skills/accounts/",
+    "./skills/campaigns/",
+    "./skills/diagnose-tracking/",
+    "./skills/discovery/",
+    "./skills/manage-campaigns/",
+    "./skills/optimize-campaign/",
+    "./skills/realize-guardrails/",
+    "./skills/reports/",
+    "./skills/web-fallback/"
+  ],
+  "agents": "./agents/",
+  "mcpServers": "./.cursor-plugin/mcp.json"
+}

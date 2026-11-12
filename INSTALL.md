@@ -148,6 +148,42 @@ If a write is attempted on Codex, the guardrails skill instructs the model to re
 
 ---
 
+## Install on Cursor
+
+Cursor loads the `.cursor-plugin/` package: the Realize MCP wiring, the `realize-analyst` agent, and every skill except the support bundle. You need Cursor 3.13 or later.
+
+### From the Cursor Marketplace
+
+Not listed yet. Once it is: open **Cursor Settings → Plugins**, search for **Realize Plugin**, click **Install**, and complete the Realize sign-in when prompted.
+
+### Local install
+
+Cursor skips symbolic links that point outside its plugin folder, so copy the repo rather than linking it:
+
+```bash
+git clone https://github.com/taboola/realize-claude-plugin
+rsync -a --delete --exclude .git --exclude node_modules realize-claude-plugin/ ~/.cursor/plugins/local/realize-plugin/
+```
+
+Then run **Developer: Reload Window** in Cursor. The skills, the agent and the `realize-mcp` server appear under **Customize**. On an Enterprise team, an admin must turn on **Allow Local Plugin Imports** first (it is off by default). To pick up a newer version, pull and run the same `rsync` again.
+
+### First run
+
+On the first Realize request, Cursor opens a browser window for Taboola SSO. There is no token to paste and no callback port to free: Cursor registers itself with the Realize sign-in service and uses its own fixed callback. Then try:
+
+```
+List my Realize accounts.
+```
+
+If sign-in fails, open the **Output** panel and pick **MCP Logs**.
+
+### What is different on Cursor
+
+- **No support bundle.** `/realize-plugin:support` reads Claude Code session files, so it is left out of the Cursor package. When something needs a human, email [Support@taboola.com](mailto:Support@taboola.com) with what you asked and what went wrong.
+- **Realize MCP showing twice.** If you also have the Claude Code plugin installed and Cursor's *Settings → Agents → Third-Party Imports* is on, Cursor may import the Claude Code copy as well. Turn that setting off, or remove one of the two.
+
+---
+
 ## Troubleshooting
 
 - **Browser didn't open / OAuth failed on the wrong port** → free port `3000` and re-register the MCP with `--callback-port 3000` (see [OAuth & the callback port](#oauth--the-callback-port)), then retry.
