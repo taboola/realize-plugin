@@ -339,14 +339,13 @@ create_campaign(
 ### Target CPA campaign (switching an existing campaign; a new one starts on Maximize Conversions)
 
 ```
-create_campaign(
-  ...,
+update_campaign(
+  account_id=<id>, campaign_id=<id>,
   bid_strategy="TARGET_CPA",
   cpa_goal=<currency>,                    # ~20% above the stable actual CPA measured during Maximize Conversions, then step down (see knowledge/bidding.md)
   spending_limit_model="NONE",            # daily cap uses NONE + daily_cap (same pattern as MAX_CONVERSIONS above)
   daily_cap=<10–15× cpa_goal>,            # 10–15×/day at setup, ≥ 10× once stable — same floor as MAX_CONVERSIONS
   daily_ad_delivery_model="STRICT",       # required when daily_cap is set
-  is_active=False,
 )
 ```
 

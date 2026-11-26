@@ -15,8 +15,8 @@ The campaign's primary KPI drives BOTH the `marketing_objective` AND the `bid_st
 | Primary KPI | Correct `marketing_objective` | Correct `bid_strategy` | Required additions |
 |---|---|---|---|
 | ROAS (return on ad spend) | `ONLINE_PURCHASES` | `MAX_VALUE` (preferred) or `MAX_CONVERSIONS` | Conversion rule (purchase event with value reporting); daily_cap per the per-strategy minimum (see "Bid Strategy × Budget minimums"). ROAS target (`roasGoal`) — see note below. |
-| CPA (cost per acquisition) for sales | `ONLINE_PURCHASES` | `MAX_CONVERSIONS`, then `TARGET_CPA` (with `cpa_goal`) once the campaign clears the eligibility check | Conversion rule attached (purchase event); daily_cap 10–15× cpa_goal at setup, ≥ 10× once stable |
-| CPL (cost per lead) | `LEADS_GENERATION` | `MAX_CONVERSIONS`, then `TARGET_CPA` once the campaign clears the eligibility check | Conversion rule (lead event); daily_cap 10–15× cpa_goal at setup, ≥ 10× once stable |
+| CPA (cost per acquisition) for sales | `ONLINE_PURCHASES` | `MAX_CONVERSIONS`, then `TARGET_CPA` (with `cpa_goal`) once the campaign hits the Target CPA numbers | Conversion rule attached (purchase event); daily_cap 10–15× cpa_goal at setup, ≥ 10× once stable |
+| CPL (cost per lead) | `LEADS_GENERATION` | `MAX_CONVERSIONS`, then `TARGET_CPA` once the campaign hits the Target CPA numbers | Conversion rule (lead event); daily_cap 10–15× cpa_goal at setup, ≥ 10× once stable |
 | App installs | `MOBILE_APP_INSTALL` | `MAX_CONVERSIONS` | Conversion rule (install event); ad-tracking SDK |
 | Site traffic / engagement | `DRIVE_WEBSITE_TRAFFIC` | `SMART` (default) or `FIXED` (legacy) | None required |
 | Pure awareness / impressions / reach | `BRAND_AWARENESS` | `SMART` or `FIXED` | None required |
@@ -138,10 +138,10 @@ The primary recommendation is **Maximize Conversions** for best performance. Oth
 
 ### Critical Target CPA Rules
 
-- **Never set Target CPA immediately at campaign launch.** Realize runs its own eligibility check and only offers the strategy once a campaign clears it. Over the **trailing 7 days**, the campaign needs more than **$1,000 USD** spend, more than **50 click-through conversions** (view-attributed ones don't count), spend on **more than 4** of those days (so 5 or more), and a daily CPA that has held steady. Elapsed days alone are not the test: a low-volume campaign can run for days without getting near the conversion bar.
-- **None of those numbers is a hard limit, and none of them blocks anything.** They are platform defaults, tunable server-side, and they decide when Realize *suggests* Target CPA rather than whether an advertiser may use it. The algorithm works with fewer conversions — `knowledge/tracking.md` says the same about the 50-per-week threshold, and that is the one to follow when a user asks whether they have enough volume. (Platform source, checked 2026-11-07.)
-- So on a new campaign, lead with Maximize Conversions rather than Target CPA, and suggest Target CPA once the campaign has cleared that check. If the user asks for it before then, don't refuse — say what the check is still waiting on, and that the algorithm does work with less.
-- **Setting a first Target CPA — take Realize's own number when it exists.** If `get_campaign` returns a `target_cpa` block, `target_cpa.recommended_target_cpa` is the platform's recommendation for this campaign, computed from its own trailing-7-day CPA, and it comes with `min_range` / `max_range` bounds. Use it. **It is not the advertiser's setting** — that is `cpa_goal`, which is the writable field. **When the block is there, stay inside its `min_range` / `max_range`** — those are the platform's own bounds and they are tighter than the fallback below. Expect it to be missing more often than not: it is tied to the eligibility check above, it goes stale, and it is not returned for a campaign already on Target CPA. **When it is absent, start ~20% above the average post-click CPA over the last 7 days.** Don't base it on the advertiser's other channels either way. Lower it only after it holds steady, never by more than 20% at a time, and never below the campaign's actual average CPA.
+- **Never set Target CPA immediately at campaign launch.** Wait until the campaign has, over the **trailing 7 days**, more than **$1,000 USD** spend, more than **50 click-through conversions** (view-attributed ones don't count), spend on **more than 4** of those days (so 5 or more), and a daily CPA that has held steady. Elapsed days alone are not the test: a low-volume campaign can run for days without getting near the conversion bar.
+- **None of those numbers is a hard limit, and none of them blocks anything.** They are the platform's own defaults, tunable server-side, and nothing in Realize enforces them or reports them through the API — they mark the point at which Target CPA is worth switching to, not a gate an advertiser has to clear. The algorithm works with fewer conversions — `knowledge/tracking.md` says the same about the 50-per-week threshold, and that is the one to follow when a user asks whether they have enough volume. (Platform source, checked 2026-11-07; re-checked 2026-11-18.)
+- So on a new campaign, lead with Maximize Conversions rather than Target CPA, and suggest Target CPA once the campaign has hit those numbers. If the user asks for it before then, don't refuse — say which number is still short, and that the algorithm does work with less.
+- **Setting a first Target CPA — start ~20% above the average post-click CPA over the last 7 days.** The writable field is `cpa_goal`. Don't base the number on the advertiser's other channels. Lower it only after it holds steady, never by more than 20% at a time, and never below the campaign's actual average CPA. `get_campaign` also returns a `target_cpa` block, but the platform stopped populating it and it always comes back null — there is no platform-recommended value to read from it. (Platform source, checked 2026-11-18.)
 - Setting Target CPA too early can significantly prolong the learning phase and delay stabilisation.
 - Once Target CPA is set, allow the algorithm to optimise. The full budget may not deplete due to the CPA constraint.
 
@@ -162,7 +162,7 @@ When recommending a Target CPA value, the value you set matters as much as the d
 
 | Current State | Signal | Action |
 |---|---|---|
-| Maximize Conversions, CPA too high | CPA consistently above goal after learning phase | Add Target CPA — start ~20% **above** current actual CPA, not at an aspirational target, **then step it down** once each level holds (never more than 20% at a time, never below actual CPA). Starting above is deliberate: a target the algorithm can already hit keeps delivery alive while it optimises, and the descent is what closes the gap to the goal. Use `target_cpa.recommended_target_cpa` from `get_campaign` when it is there; otherwise the average post-click CPA over the last 7 days. |
+| Maximize Conversions, CPA too high | CPA consistently above goal after learning phase | Add Target CPA — start ~20% **above** current actual CPA, not at an aspirational target, **then step it down** once each level holds (never more than 20% at a time, never below actual CPA). Starting above is deliberate: a target the algorithm can already hit keeps delivery alive while it optimises, and the descent is what closes the gap to the goal. Base the starting value on the average post-click CPA over the last 7 days. |
 | Maximize Conversions, scale is low | Budget not depleting | Use auction insights to investigate. Consider expanding targeting and refreshing ads. Raise budget, broaden targeting. |
 | Maximize Conversions, high CTR low CVR | Good clicks but no conversions | Reassess landing-page quality, check creative relevance, adjust targeting. |
 | Maximize Conversions, high CVR low scale | Converting well but not enough volume | Expand targeting, consider splitting out top placements. |
@@ -294,7 +294,7 @@ CPA volatility immediately after launch is common — the algorithm is learning 
 | High CVR, Low Scale | Expand targeting, move to Maximize Conversions (if not already), consider splitting out top placements. |
 | Steady scale, High CPA | Add predictive or CRM audience layering, refresh creative, refine site list. |
 | Stalled scale post-launch | Wait until `cvr_learning_status` reports out of learning (typically ~7-10 days, but the status decides). Review targeting or bid constraints. Use auction insights. |
-| Maximize Conversions active, CPA too high | Add Target CPA — start from `target_cpa.recommended_target_cpa` when `get_campaign` returns one, else ~20% **above** the last 7 days' average post-click CPA, **then step it down** as each level holds. Starting above keeps delivery alive; the step-down is what lowers CPA. Expect some scale loss either way: Target CPA puts cost ahead of volume. Consider blocking underperforming sites using Custom Rules. |
+| Maximize Conversions active, CPA too high | Add Target CPA — start ~20% **above** the last 7 days' average post-click CPA, **then step it down** as each level holds. Starting above keeps delivery alive; the step-down is what lowers CPA. Expect some scale loss either way: Target CPA puts cost ahead of volume. Consider blocking underperforming sites using Custom Rules. |
 | Maximize Conversions active, scale is low | Use auction insights. Consider expanding targeting and refreshing ads. Raise budget, broaden targeting. |
 
 ---
@@ -353,7 +353,7 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 
 ## Guardrails
 
-- Never set Target CPA immediately at campaign launch — wait until the campaign clears Realize's Target CPA eligibility check (see *Critical Target CPA Rules* above).
+- Never set Target CPA immediately at campaign launch — wait until the campaign hits the numbers in *Critical Target CPA Rules* above.
 - Never set Target CPA far from actual performance — it can significantly decrease scale.
 - Never make frequent campaign changes during the learning phase — this resets learning and worsens performance.
 - Never reduce budget aggressively during learning — moderate adjustments only, and only if absolutely necessary.
@@ -370,7 +370,7 @@ Consider using the **Performance Simulator** (if eligible) to identify potential
 
 ## Common Mistakes
 
-1. **Setting Target CPA too early.** Prolongs learning phase, delays stabilisation. Wait until the campaign clears Realize's Target CPA eligibility check (see *Critical Target CPA Rules* above).
+1. **Setting Target CPA too early.** Prolongs learning phase, delays stabilisation. Wait until the campaign hits the numbers in *Critical Target CPA Rules* above.
 2. **Setting an aspirational Target CPA.** Algorithm cannot hit an unrealistic target, scale drops. Start ~20% above actual current post-click CPA.
 3. **Frequent budget changes during learning.** Resets learning each time. Make one change, wait 2-3 days.
 4. **Reducing budget to fix high CPA.** Limits the algorithm's ability to optimise. Address root cause (tracking, creatives, targeting) instead.
