@@ -2,7 +2,7 @@
 
 ## Overview
 
-Managing budgets effectively sustains performance while minimising waste. Start with a modest daily budget relative to campaign goals and scale gradually as performance stabilises — this gives the algorithm time to learn and optimise. This file covers the 10× CPA rule, pacing, scaling, and short-burst campaign handling.
+Managing budgets effectively sustains performance while minimising waste. Start with a modest daily budget relative to campaign goals and scale gradually as performance stabilises — this gives the algorithm time to learn and optimise. This file covers the 10-15× CPA rule, pacing, scaling, and short-burst campaign handling.
 
 > **Attribution note:** When comparing budget outcomes against CPA goals, always state the attribution model used (`CPA (CT only)`, etc.).
 
@@ -10,22 +10,24 @@ Managing budgets effectively sustains performance while minimising waste. Start 
 
 ## Budget Planning
 
-### The 10× CPA Rule
+### The 10-15× CPA Rule
 
 For campaigns using **Maximize Conversions**, the daily budget must be:
 
 | CPA Level | Daily Budget Requirement |
 |---|---|
-| CPA ≥ $5 | **10× target CPA per campaign** (e.g., $500 for a $50 CPA goal) |
+| CPA ≥ $5 | **10-15× target CPA per campaign** (e.g., $500-$750 for a $50 CPA goal) |
 | CPA < $5 | **$50 minimum** daily budget |
 
-If 10× isn't feasible upfront, start smaller and increase once enough data is collected to evaluate trends.
+If 10-15× isn't feasible upfront, start smaller and increase once enough data is collected to evaluate trends. Once the campaign has stabilised, **10× CPA is the minimum**.
+
+**These multiples are Taboola's published planning guidance, not a server-side rule.** Nothing in the platform validates daily budget against CPA for Maximize Conversions, and a campaign budgeted below the multiple is accepted and simply runs there — so a budget under the multiple is never a *platform* rejection and must not be reported as one. The plugin's own pre-submit check in `manage-campaigns` is a separate and deliberate guardrail — it still holds the user to the minimum before submitting; it just isn't the server talking (platform source, checked 2026-11-07).
 
 ### Budget by Bidding Strategy
 
 | Strategy | Daily Budget | Monthly Budget |
 |---|---|---|
-| **Maximize Conversions** | 10× expected CPA (or $50 min) | — |
+| **Maximize Conversions** | 10-15× expected CPA at setup, 10× minimum once stable (or $50 min) | — |
 | **Enhanced CPC** | 5× CPA goal | 150× CPA goal |
 | **Fixed Bid** | According to advertiser requirements | According to advertiser requirements |
 
@@ -121,7 +123,7 @@ Short-burst campaigns typically run **2-10 days** for promotions, launches, or t
 |---|---|
 | 2-3 days | Lifetime budget + Pace Ahead + broad targeting. Very short — focus on spend delivery over optimisation. (Pace Ahead is set in the Realize UI; this plugin cannot adjust it.) |
 | 4-7 days | Enhanced CPC with competitive bid + lifetime budget + broad targeting. |
-| > 7 days | Maximize Conversions if audience is large and budget meets the 10× rule. Use lifetime budget. Allows MaC learning to compound over the flight. |
+| > 7 days | Maximize Conversions if audience is large and budget meets the 10× floor. Use lifetime budget. Allows MaC learning to compound over the flight. |
 
 ---
 
@@ -141,7 +143,7 @@ This rule applies to budget post-mortems, A / B tests with different arm budgets
 
 ## Guardrails
 
-- Never set daily budget below 10× target CPA for Maximize Conversions campaigns ($50 minimum if CPA < $5).
+- Never set daily budget below 10× target CPA for Maximize Conversions campaigns ($50 minimum if CPA < $5). At setup, aim for 10-15×.
 - Never increase budget by more than 20% at a time.
 - Never make frequent budget changes (more often than every 2-3 days) — this destabilises the algorithm.
 - Never reduce budget during the learning phase unless absolutely necessary.
@@ -164,7 +166,7 @@ This rule applies to budget post-mortems, A / B tests with different arm budgets
 ## Pro Tips
 
 - For Enhanced CPC campaigns, budget math is different: daily = 5× CPA goal, monthly = 150× CPA goal.
-- The 10× rule is **per campaign** — if you have 3 campaigns in a group, total group budget should be 3× the 10× requirement.
+- The 10–15× rule is **per campaign** — if you have 3 campaigns in a group, total group budget should be 3× the per-campaign requirement.
 - Budget-depletion issues with Maximize Conversions are almost never a bidding problem — the strategy is designed to spend the full budget. Check targeting, creatives, and supply first.
 - For seasonal campaigns, plan the budget curve: ramp up 3-5 days before the event, peak during, scale down after.
 - Pace Ahead is a powerful but underused feature for campaigns that need to accelerate delivery. **Note:** Pace Ahead is **not something this plugin does** — it is set in the Realize UI after campaign creation. `create_campaign` / `update_campaign` cannot touch it, so if a user asks for it, decline the write and point them at the screen.
