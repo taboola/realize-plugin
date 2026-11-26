@@ -135,7 +135,7 @@ If the request can reasonably map to multiple targets — multiple campaigns, mu
 
 - *"Create 3 ad variations on account X"* — without a named campaign or item, the plugin must NOT default to "apply across all of the user's campaigns". Ask which campaign(s) — and how many items per campaign — before any write.
 - *"Apply the budget bump to my campaigns"* — confirm whether the user means one specific campaign, a named list, or "all running campaigns"; if all, enumerate them in the preview before each one.
-- *"Pause the worst performers"* — confirm the selection criterion (CPA threshold? click count? campaign vs item?) and the resulting list before any pause.
+- *"Pause the worst performers"* — confirm the selection criterion (CPA threshold? click count? campaign vs item?) and the resulting list before any pause. Drop any campaign whose status cannot be paused or resumed (see *Updating a campaign → Scalars only*, step 2) before you show the list, and name the dropped ones. The `status` that `list_campaigns` returns is enough to build this list; each pause still goes through step 2 on its own.
 
 Scope confirmation uses `AskUserQuestion` with concrete options drawn from the user's account data (e.g., *"Which campaign — A, B, or C?"*, or *"All 4 running campaigns, or pick a subset?"*). Default expansion ("all of them") is forbidden unless the user explicitly confirms it.
 
@@ -289,7 +289,7 @@ If the user did not explicitly say to launch, set `is_active=false` (or omit, si
 ### Scalars only (e.g., budget bump, bid change, name change)
 
 1. Resolve `account_id`, `campaign_id`.
-2. Call `get_campaign` to capture current state.
+2. Call `get_campaign` to capture current state. **Pause or resume:** if `is_active` already matches what the user wants, say so and send nothing. Otherwise read `status` before any preview. `update_campaign`'s `is_active` description says which statuses can't be paused or resumed; go by it, not a list here. If the status is one of them, skip the change and tell the user why in one plain line (in plain words, not the raw status value); for a rejection, offer the reason from `policy_review`. A campaign whose *group* was terminated is not skipped: a group's state does not block a pause, and the group case reports its own distinct status that is not on the skip list. Deleting a group does terminate the campaigns in it, though, so a campaign reported this way has often been terminated in its own right and the pause will be refused. **Say that in the preview** — name the group as terminated and say the pause may come back refused. Dropping it is wrong, and so is previewing it as routine. **But treat `status` as a filter, not a verdict.** It is resolved in a fixed order in which the account and the group outrank the campaign, so a campaign that genuinely cannot be paused can report something else entirely: a rejected campaign inside a terminated group reports the group's termination, and a frozen account, an account in billing review or an ad-server setup error each mask it the same way. The reverse holds too — a campaign that reports its group's termination may still be pausable, which is why it is not skipped. So the pre-read catches the clear cases and the write is the backstop for the rest: if a pause still fails as "cannot be paused or resumed", don't retry — tell the user and move to the next campaign. (Platform source, checked 2026-11-07.)
 3. **If the response carries a `campaign_group_id` that is a positive number** (`0` / `null` / `""` / absent all mean ungrouped), and any budget field is among the changes, read the group first per `knowledge/campaign-structure.md` → *Reading a campaign group*. An unread group is **not** an unshared one: if you cannot confirm the setup, say so rather than previewing. If the group owns the budget, **stop** — those fields are locked on the campaign and the API rejects them. Say the budget lives on the group, and offer `update_campaign_group` as the next step rather than the Realize UI. Non-budget scalars are unaffected; carry on to step 4.
 4. **If `campaign_group_id` is among the changed fields, it is an attach and nothing else.** `update_campaign` can only put a currently ungrouped campaign into a `CUSTOM`-budget group — the full rule, both account gates and what each failure looks like are in `references/mcp-write-surface.md` → *Campaign groups and the budget they own*. If the campaign already has a group, refuse: moving and detaching are Realize UI actions, and taking a campaign out of a group pauses it. If it is ungrouped, read the target group and refuse any managed-budget target — testing only for `AUTOMATIC` lets the other managed values through to a call that cannot land. **The preview must say the attach cannot be undone from here**, and that in a managed-budget group it hands over budget control for good.
 5. Render diff preview:
@@ -478,7 +478,7 @@ Every write changes a resource that needs Realize approval (24–48 hours) befor
 
 - Pull `get_campaign(account_id, campaign_id)` to confirm the API-of-record matches the preview the user approved. Both params required — never call `get_campaign` with only `campaign_id`.
 - Pull `list_items(account_id, campaign_id)` to confirm new/updated items are attached.
-- For pauses/resumes, confirm the `status` field on the campaign or `is_active` on the item.
+- For pauses/resumes, confirm `is_active` on the campaign or item. A campaign's `status` may not change (for example, a campaign in a terminated group keeps the group's status, and one resumed inside a paused group still shows the group as paused).
 
 If `get_campaign` returns the prior state immediately after a save, wait a minute and retry once — there can be brief lag between the write and read paths.
 
@@ -492,7 +492,7 @@ These remain Realize-UI-only. Do not fabricate tools for them. **Do not fabricat
 
 Realize UI → Campaigns → row's overflow menu (⋯) → **Delete**.
 
-For most "remove this" intents, the MCP-supported alternative is `update_campaign({is_active: false})` — the campaign stops running but is preserved. Offer that path first; only direct the user to the UI for true deletion.
+For most "remove this" intents, the MCP-supported alternative is `update_campaign({is_active: false})` — the campaign stops running but is preserved. Offer that path first, unless the campaign's status blocks pausing (see *Updating a campaign → Scalars only*, step 2); only direct the user to the UI for true deletion.
 
 ### Duplicate a campaign
 
