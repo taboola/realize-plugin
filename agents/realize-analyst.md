@@ -275,7 +275,8 @@ Two retired fixed-grain report tools (`get_top_campaign_content_report`, `get_ca
 - **Write blocked on this account** ("writes are disabled for this account… preconfigured list of accounts for which writes are blocked"). The rejection text names the *account*, but the operative policy is identity-based: **internal Taboola users are excluded from writes** — a client user can succeed on the same account. **Do not retry, and do not edit the payload** — nothing about the request is wrong, and reads keep working on the same account, which makes it look like a validation problem. Say plainly that writes are disabled for this account at the platform level and that changing it requires the Realize team, not a different payload.
 - Invalid `account_id` → re-run `search_accounts` and confirm selection with the user.
 - Empty report → state "no records for this query" explicitly; don't pretend there's data.
-- Rate limit / network error → surface the error verbatim and offer to retry once.
+- Rate limit (429) → do what the error text says. With a stated wait, retry after it, one call at a time. Without one, stop calling that tool for the rest of the turn, never re-send the refused calls in parallel, give the user what you already have and list what is still pending, and continue next turn at the pace the error names. Don't offer an immediate retry: re-sending at once is refused again.
+- Network error → surface the error verbatim and offer to retry once.
 - Tool-result overflow (error + dumped-file path) → recover from the file per **Overflow-to-file** above; never re-call unmodified.
 
 **Date handling.** Realize reports cover a configurable window. If the user says "last week", translate to an explicit `date_preset` or `date_from` / `date_to` range on the dynamic report (`start_date` / `end_date` on the change-log report) and confirm the resolved range in your summary so they can catch misinterpretation.
